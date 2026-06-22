@@ -1,0 +1,36 @@
+#ifndef SND_LOADERS_REFLECTIVE_CHAIN_H
+#define SND_LOADERS_REFLECTIVE_CHAIN_H
+
+#include <sindri/common/helpers.h>
+#include <sindri/loaders/reflective/engine.h>
+
+SND_BEGIN_EXTERN_C
+
+/**
+ * @brief Executes the entire allocation and fixup chain.
+ *
+ * @param ctx Initialized loader context.
+ * @return SND_OK on success, otherwise the failing stage status.
+ * @note Wraps compatibility check, copy, relocation, imports, protections, and
+ * TLS.
+ */
+snd_status_t snd_prepare_reflective_image(snd_loader_ctx_t *ctx);
+
+/**
+ * @brief Executes the loaded image entry point.
+ *
+ * @param ctx Prepared loader context.
+ * @return SND_OK on success, otherwise execution error.
+ */
+snd_status_t snd_execute_reflective_image(snd_loader_ctx_t *ctx);
+
+/**
+ * @brief Cleans up and detaches the reflective image state.
+ *
+ * @param ctx Reflective loader context.
+ */
+void snd_detach_reflective_image(snd_loader_ctx_t *ctx);
+
+SND_END_EXTERN_C
+
+#endif // SND_LOADERS_REFLECTIVE_CHAIN_H

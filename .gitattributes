@@ -1,0 +1,9 @@
+# Enforce Unix line endings for C/C++ source code
+*.c text eol=lf
+*.h text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.cmake text eol=lf
+
+# Keep batch files as CRLF for Windows compatibility
+*.bat text eol=crlf

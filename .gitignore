@@ -1,0 +1,4 @@
+build*/
+.clangd
+__pycache__
+corkami

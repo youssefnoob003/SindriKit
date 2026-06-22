@@ -1,0 +1,26 @@
+name: Build Matrix
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        arch: [x64, Win32]
+        build_type: [Release]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Configure CMake
+      # By default, Windows runners use MSVC. We compile for both x64 and x86 to catch pointer truncation bugs.
+      run: cmake -B ${{github.workspace}}/build -A ${{matrix.arch}} -DCMAKE_BUILD_TYPE=${{matrix.build_type}} -DSND_ENABLE_DEBUG=OFF -DSND_BUILD_PAYLOADS=ON
+
+    - name: Build
+      # The build will automatically fail if /W4 or /WX catches any warnings, enforcing our strict standards.
+      run: cmake --build ${{github.workspace}}/build --config ${{matrix.build_type}}
