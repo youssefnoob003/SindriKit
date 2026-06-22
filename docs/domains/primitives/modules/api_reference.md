@@ -56,9 +56,3 @@ Hash-based variant. Eliminates the plaintext module name string from the binary 
 | `out_base` | `PVOID*` | Receives the base address of the located module |
 
 **Returns:** `snd_status_t` — `SND_OK` on success.
-
----
-
-## Global NTDLL State (`sindri/primitives/ntdll.h`)
-
-SindriKit maintains global state for the `ntdll.dll` base address. This address is used ubiquitously by native components to extract clean stubs or parse export tables without relying on repetitive PEB lookups or the potentially hooked PEB-resident image.

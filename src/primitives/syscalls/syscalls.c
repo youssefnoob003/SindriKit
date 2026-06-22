@@ -1,5 +1,4 @@
 #include <sindri/common/status.h>
-#include <sindri/primitives/ntdll.h>
 #include <sindri/primitives/peb.h>
 #include <sindri/primitives/syscalls.h>
 #include <windows.h>
@@ -9,6 +8,18 @@
 // State management for the resolution pipeline
 static snd_syscall_resolver_t g_strategy_chain[SND_MAX_INTERNAL_STRATEGIES] = {0};
 static int                    g_strategy_count                              = 0;
+static PVOID g_syscall_ntdll_target = NULL;
+
+void snd_set_ntdll(PVOID ntdll_base) {
+    if (ntdll_base == NULL) {
+        return;
+    }
+    g_syscall_ntdll_target = ntdll_base;
+}
+
+PVOID snd_get_ntdll(void) {
+    return g_syscall_ntdll_target;
+}
 
 void snd_set_syscall_strategy(snd_syscall_resolver_t resolver) {
     if (!resolver)

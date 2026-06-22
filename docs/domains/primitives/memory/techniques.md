@@ -27,4 +27,4 @@ The `snd_mem_native` implementation bypasses `kernel32.dll` and `ntdll.dll` enti
 By executing the `syscall` instruction directly, the implant cleanly bypasses userland EDR hooks placed inside the `ntdll.dll` stubs. The kernel receives the memory request without userland telemetry sensors ever recording the event.
 
 > [!WARNING]
-> `snd_mem_native` requires the operator to manually configure the syscall pipeline (via `snd_set_syscall_strategy` and `sindri/primitives/ntdll.h`'s `snd_set_ntdll`) prior to invocation. If the pipeline is not bootstrapped, the native memory calls will immediately fail.
+> `snd_mem_native` requires the operator to manually configure the syscall pipeline (via `snd_set_syscall_strategy` and `snd_set_ntdll`) prior to invocation. If the pipeline is not bootstrapped, the native memory calls will immediately fail.

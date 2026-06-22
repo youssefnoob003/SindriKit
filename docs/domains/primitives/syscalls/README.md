@@ -3,7 +3,7 @@
 This directory details SindriKit's advanced system for extracting System Service Numbers (SSNs) and bypassing inline userland EDR hooks.
 
 > [!WARNING]
-> **Initialization Constraint:** The syscall pipeline requires setting up the NTDLL base address. `snd_set_ntdll()` (from `sindri/primitives/ntdll.h`) must be called prior to invoking any resolution function.
+> **Initialization Constraint:** The syscall pipeline requires setting up the NTDLL base address. `snd_set_ntdll()` must be called prior to invoking any resolution function.
 
 ## Table of Contents
 - [pipeline.md](pipeline.md)

@@ -91,7 +91,6 @@ add_library(sindri_engine STATIC
     src/primitives/modules/win.c
     src/primitives/modules/native.c
     src/primitives/modules/peb.c
-    src/primitives/modules/ntdll.c
     # Syscall resolvers
     src/primitives/syscalls/syscalls.c
     src/primitives/syscalls/hellsgate.c

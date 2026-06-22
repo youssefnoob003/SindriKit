@@ -14,17 +14,3 @@ The primitives domain forms the absolute foundation of SindriKit. Everything bui
   Techniques for interacting with loaded DLLs and extracting function addresses via PEB traversal.
 - [syscalls/](syscalls/)
   The framework's advanced system for bypassing userland EDR hooks via a cascading fallback mechanism.
-
----
-
-## Global Primitives (`sindri/primitives/ntdll.h`)
-
-SindriKit maintains global state for the `ntdll.dll` base address. This address is used ubiquitously by native components (like the syscall resolver and the native module API) to extract clean stubs or parse export tables without relying on repetitive PEB lookups or the potentially hooked PEB-resident image.
-
-### `snd_set_ntdll`
-Sets the globally cached base address of `ntdll.dll`.
-- **`ntdll_base`**: Base address to cache. Typically obtained via KnownDlls mapping or PEB walking.
-
-### `snd_get_ntdll`
-Retrieves the globally cached base address.
-- **Returns:** `PVOID` The base address, or `NULL` if not set.

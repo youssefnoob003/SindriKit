@@ -65,7 +65,7 @@ Appends a fallback strategy to the resolution pipeline. The pipeline is evaluate
 ### NTDLL Base Address
 
 > [!NOTE]
-> The `ntdll.dll` base address is managed globally via `snd_set_ntdll` and `snd_get_ntdll` from `sindri/primitives/ntdll.h`. You MUST set the global base before attempting to resolve syscalls.
+> The `ntdll.dll` base address is managed globally via `snd_set_ntdll` and `snd_get_ntdll`. You MUST set the global base before attempting to resolve syscalls.
 
 ---
 
@@ -91,3 +91,19 @@ ASM stub that performs the actual `syscall` instruction. Architecture-specific i
 | `args` | `snd_syscall_args_t*` | Pointer to a populated arguments structure |
 
 **Returns:** `NTSTATUS` — the raw kernel return value.
+
+### `snd_set_ntdll`
+Sets the global `ntdll.dll` base address.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `base` | `PVOID` | The base address of the `ntdll.dll` image |
+
+**Returns:** `void`
+
+---
+
+### `snd_get_ntdll`
+Returns the global `ntdll.dll` base address.
+
+**Returns:** `PVOID` — the base address of the `ntdll.dll` image, or `NULL` if not set.

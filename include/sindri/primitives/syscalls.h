@@ -60,6 +60,18 @@ void snd_set_syscall_strategy(snd_syscall_resolver_t resolver);
 snd_status_t snd_add_syscall_strategy(snd_syscall_resolver_t resolver);
 
 /**
+ * @brief Sets the global base address of the ntdll.dll module.
+ * @param ntdll_base The base address of the ntdll module.
+ */
+void snd_set_ntdll(PVOID ntdll_base);
+
+/**
+ * @brief Retrieves the global base address of the ntdll.dll module.
+ * @return The base address of the ntdll module, or NULL if not set.
+ */
+PVOID snd_get_ntdll(void);
+
+/**
  * @brief Core resolution entrypoint (evaluates the internal fallback chain
  * automatically).
  *
