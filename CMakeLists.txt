@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(SindriKit VERSION 1.0.0 LANGUAGES C ASM_MASM)
+project(SindriKit VERSION 1.0.1 LANGUAGES C ASM_MASM)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
 
 option(SND_ENABLE_DEBUG   "Enable debug prints and tracking"             OFF)

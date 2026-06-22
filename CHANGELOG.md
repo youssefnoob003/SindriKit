@@ -25,3 +25,7 @@ SindriKit is a Windows evasion toolkit written in C. This first release provides
 - **Strict Compilation:** The build system enforces `/W4 /WX` to catch implicit truncations and pointer mismatches at compile time.
 - **SILENT Tier:** Compiling with `SND_ENABLE_DEBUG=OFF` removes all state-machine prints and error contexts, ensuring no framework strings end up in the `.rdata` section.
 - **CRT Independence:** The `SND_CRTLESS=ON` flag builds the engine without the C Standard Library, relying on compiler-intrinsic fallbacks.
+
+## [1.0.1] - 2026-06-22
+### Fixed
+- **Loaders:** Fixed an access violation in `native_load_library` caused by resolving `LdrLoadDll` from an unmapped/disk NTDLL image. The loader now strictly resolves via the active PEB to maintain loader lock integrity.

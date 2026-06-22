@@ -11,7 +11,7 @@ Two pre-built instances of the `snd_module_api_t` interface are exported globall
 | Symbol | Backend Paradigm |
 |---|---|
 | `snd_mod_win` | `LoadLibraryA` / `GetProcAddress` / `GetModuleHandleW` |
-| `snd_mod_native` | Global cache (`snd_get_ntdll`) + hash-based export resolution (`snd_pe_get_export_address_by_hash`) + PEB walking (`snd_peb_get_module_base_by_hash`) |
+| `snd_mod_native` | PEB walking (`snd_peb_get_module_base_by_hash`) + hash-based export resolution (`snd_pe_get_export_address_by_hash`) |
 
 ---
 
@@ -62,21 +62,3 @@ Hash-based variant. Eliminates the plaintext module name string from the binary 
 ## Global NTDLL State (`sindri/primitives/ntdll.h`)
 
 SindriKit maintains global state for the `ntdll.dll` base address. This address is used ubiquitously by native components to extract clean stubs or parse export tables without relying on repetitive PEB lookups or the potentially hooked PEB-resident image.
-
-### `snd_set_ntdll`
-
-Sets the globally cached base address of `ntdll.dll`.
-
-| Parameter | Type | Description |
-|---|---|---|
-| `ntdll_base` | `PVOID` | Base address to cache. Typically obtained via KnownDlls mapping or PEB walking. |
-
-**Returns:** `void`
-
----
-
-### `snd_get_ntdll`
-
-Retrieves the globally cached base address.
-
-**Returns:** `PVOID` — The base address, or `NULL` if not set.

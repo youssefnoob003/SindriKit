@@ -57,7 +57,7 @@ When operating in native mode, SindriKit needs a clean `ntdll.dll` to extract SS
 
 At boot, the Session Manager (`smss.exe`) creates pre-mapped, read-only section objects for core system DLLs under the `\KnownDlls` Object Manager directory. These sections are snapshots taken before any userland security software is initialized. Opening `\KnownDlls\ntdll.dll` via `NtOpenSection` and mapping it into the current process with `NtMapViewOfSection` yields a pristine image whose text section has never been touched by EDR hooks.
 
-The base address of this clean mapping is then fed directly to `snd_set_ntdll()` (from `sindri/primitives/ntdll.h`), ensuring that all subsequent SSN resolution and native module lookups operate on unmodified stubs.
+The base address of this clean mapping is then fed directly to `snd_set_ntdll()` (from `sindri/primitives/ntdll.h`), ensuring that all subsequent SSN resolution operate on unmodified stubs.
 
 ```c
 PVOID clean_ntdll = NULL;

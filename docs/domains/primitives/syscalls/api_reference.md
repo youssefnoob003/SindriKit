@@ -65,7 +65,7 @@ Appends a fallback strategy to the resolution pipeline. The pipeline is evaluate
 ### NTDLL Base Address
 
 > [!NOTE]
-> The `ntdll.dll` base address is no longer set locally per-subsystem. It is now managed globally via `snd_set_ntdll` and `snd_get_ntdll` from `sindri/primitives/ntdll.h`. You MUST set the global base before attempting to resolve syscalls.
+> The `ntdll.dll` base address is managed globally via `snd_set_ntdll` and `snd_get_ntdll` from `sindri/primitives/ntdll.h`. You MUST set the global base before attempting to resolve syscalls.
 
 ---
 

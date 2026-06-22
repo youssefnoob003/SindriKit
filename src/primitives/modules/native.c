@@ -4,7 +4,6 @@
 #include <sindri/parsers/pe/pe_exports.h>
 #include <sindri/parsers/pe/pe_parser.h>
 #include <sindri/primitives/modules.h>
-#include <sindri/primitives/ntdll.h>
 #include <sindri/primitives/peb.h>
 #include <sindri_hashes.h>
 #include <stddef.h>
@@ -36,9 +35,10 @@ static snd_status_t WINAPI native_load_library(const char *module_name, HMODULE 
         return SND_OK;
     }
 
-    PVOID ntdll = snd_get_ntdll();
-    if (!ntdll)
-        return SND_ERR_CTX(SND_STATUS_NOT_INITIALIZED, "NTDLL base is NULL");
+    PVOID        ntdll;
+    snd_status_t resolve_status = snd_peb_get_module_base_by_hash(SND_HASH_NTDLL_DLL, &ntdll);
+    if (resolve_status.code != SND_SUCCESS)
+        return resolve_status;
 
     FARPROC ldr_addr = NULL;
     snd_pe_get_export_address_by_hash(ntdll, SND_SYS_DLL_SIZE_DEFAULT, SND_HASH_LDRLOADDLL, &ldr_addr,
