@@ -5,45 +5,35 @@
 <h1 align="center">SindriKit</h1>
 
 <p align="center">
-  <strong>The infrastructure offensive development never had.</strong><br>
-  <em>A foundational C library for building operationally credible offensive capabilities.</em>
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/language-C-blue?style=flat-square"/>
-  <img src="https://img.shields.io/badge/arch-x86%20%7C%20x64-lightgrey?style=flat-square"/>
-  <img src="https://img.shields.io/badge/build-CMake-orange?style=flat-square"/>
-  <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square"/>
+  <strong>Offensive Development Deserves Better Architecture.</strong><br>
+  <em>A C library for building offensive capabilities.</em>
 </p>
 
 ---
 
-## What SindriKit Actually Is
+## Core Concept
 
-**SindriKit is not an implementation. It is the architecture underneath implementations.**
+Most offensive utilities hardcode their execution mechanics inside the technique's logic. A reflective loader doesn't just map an image; it maps it using a specific, hardcoded chain of `VirtualAlloc` or native NTAPI calls. When an EDR starts monitoring that specific chain, you are forced to rewrite the entire tool.
 
-Most offensive libraries give you parts. A syscall wrapper. A reflective loader. A process injector. Useful individually, incompatible by default, and you inherit the task of rewriting them from scratch every time an EDR changes its mind.
+SindriKit solves this by enforcing a separation of concerns via interface abstraction tables:
 
-The real problem is that offensive tools couple two things that should never be coupled: the logic of a technique and the mechanics of its execution. Your loader doesn't just load a PE image. It loads a PE image *using VirtualAlloc, LoadLibrary... or whatever Win32 calls you hardcoded months ago*. When that gets flagged, you rewrite. The target changes. You rewrite again. You are not fighting the problem. You are fighting your own architecture.
+1. **The Technique Logic:** (e.g., loaders, injectors, patchers) deals with state tracking and data orchestration. It has no knowledge of how memory is allocated or how threads are created.
+2. **The Execution Mechanics:** (e.g., Win32 API, Native NTAPI, Direct Syscalls) are inside independent API tables and injected into the technique at runtime.
 
-SindriKit applies a single fix to that problem at the design level: **any offensive technique is expressed as a context structure that consumes injected API tables**. The execution mechanics (e.g. Win32, direct syscall, driver-backed, anything an operator defines) are resolved at runtime through those tables, completely invisible to the technique's logic.
-
-The consequence is immediate: swapping your entire execution strategy from Win32-visible to raw direct-syscall becomes one line of code without having to rewrite your entire toolchain. The technique never knew the difference.
-
----
-
-## What You Get
-
-| | What it means |
-|---|---|
-| **One mental model** | Every domain ships with the same context + API table contract, standardized across each and every technique. |
-| **Zero rewrite cycle** | Swap functions pointers to shift your entire execution profile. The technique never changes. |
-| **Zero integration friction** | One `add_subdirectory` and `target_link_libraries` to inherit the full engine. |
-| **Zero production overhead** | Silent tier compiles away every diagnostic string, file reference, and line number. |
+By shifting execution mechanics to runtime function pointers, you can swap your entire strategy from Win32 calls to raw direct syscalls with a single line of code—without changing your payload execution logic.
 
 ---
 
-## 60-Second Drop-In
+## Design Architecture
+
+* **Decoupled Execution Profiles:** Swap underlying memory, module, and thread manipulation behaviors via function pointer tables without breaking the calling technique.
+* **Cascading Syscall Fallbacks:** Dynamically fall back through a priority queue of syscall extraction strategies (Hell's Gate, Halo's Gate, etc.) until one evades detection.
+* **Compile-Time Obfuscation:** String and API hashing algorithms (DJB2, FNV1A) can be swapped globally via CMake. Compiling automatically randomizes the global seed to alter static signatures.
+* **Release Builds:** A silent tier strips all diagnostic strings, file descriptors, and tracking frames from the final binary, reducing your static footprint to bare primitives.
+
+---
+
+## Integrating SindriKit
 
 ```cmake
 cmake_minimum_required(VERSION 3.16)
@@ -105,14 +95,12 @@ injector.mem_api    = &snd_mem_native;
 injector.target_pid = 1337;
 snd_execute_injection(&injector);
 
-// ETW Patcher, Stack Spoofer, Credential Harvester... Same contract, always.
+// ETW Patcher, Stack Spoofer, Credential Harvester... Same approach.
 ```
 
 ### Cascading Syscall Pipeline
 
-No single extraction technique works everywhere. The hook architecture inside an EDR is not what you'll find in another. Hell's Gate for example works until it doesn't.
-
-SindriKit treats syscall resolution as an injectable mechanic. Stack strategies in priority order. The engine falls through until one succeeds:
+SindriKit treats syscall resolution as an injectable mechanic, stacking strategies in priority order. The engine falls through until one succeeds:
 
 ```c
 snd_set_syscall_strategy(snd_hell_extract_syscall);
@@ -123,14 +111,14 @@ snd_add_syscall_strategy(any_other_technique_you_want);
 
 ### Compile-Time Algorithm Agility
 
-Every API name and module string is stripped from the final binary at compile time. Swap hashing algorithms across the entire codebase with a single CMake variable:
+Every API name and module string is removed from the final binary at compile time via a single CMake variable:
 
 ```cmake
 set(SND_HASH_ALGO "FNV1A")  # or DJB2 recomputes everything automatically
 set(SND_RANDOMIZE_SEED ON)  # generates a fresh 32-bit seed on next configure
 ```
 
-Each hash is embedded alongside a randomly generated seed (if `SND_RANDOMIZE_SEED=ON`). Static footprint shifts completely between compilations without touching a line of C.
+Each hash is computed with a randomly generated seed (if `SND_RANDOMIZE_SEED=ON`). Static footprint shifts completely between compilations without touching a line of C.
 
 ### Architecture-Aware Dynamic FFI
 
@@ -138,22 +126,20 @@ A custom MASM assembly bridge for arbitrary runtime function invocation. x64 bui
 
 ### Bounds-Checked PE Parser
 
-A unified PE32/PE32+ parser with a critical `is_mapped` flag that correctly handles both raw on-disk images and memory-mapped views. Every data directory access is validated against tracked buffer bounds before dereferencing. Export resolution supports forwarder chains up to depth 4 with hash-based lookup.
+A unified PE32/PE32+ parser with an `is_mapped` flag that correctly handles both raw on-disk images and memory-mapped views. Every data directory access is validated against tracked buffer bounds before dereferencing. Export resolution supports forwarder chains up to depth 4 with hash-based lookup.
 
-Tested against inputs that actually break naive parsers:
+Tested against:
 - 40+ core test combinations targeting edge-case EXEs, DLLs, bad arguments, missing exports, and TLS callbacks across x86 and x64.
 - 100+ dynamic PE mutations generated by the `pe_mutator` module: zeroed section names, integer overflows, invalid `e_lfanew` bounds, mangled imports.
-- Full Corkami corpus: cleanly loads valid samples, cleanly rejects malformed ones With no crashes across 99% of the samples.
+- Full Corkami corpus: cleanly loads valid samples, cleanly rejects malformed ones without crashing across 99% of the samples.
 
 ### State-Tracked Domain Contexts
 
-Every offensive operation is managed through a discrete context structure with an explicit stage enumeration. Operations can be paused between stages for sleep obfuscation or staged deployment, resumed cleanly, and inspected for the exact failure point down to the subsystem and reason.
+Every offensive operation is managed through a discrete context structure with stage enumeration. Operations can be paused between stages for sleep obfuscation or staged deployment, resumed cleanly, and inspected for the exact failure point down to the subsystem and reason.
 
 ---
 
 ## The API Design Philosophy
-
-> **A context structure owns the operation's state. Injected API tables own the execution mechanics. The two are completely separate.**
 
 Bootstrap the execution subsystem once:
 
@@ -176,7 +162,7 @@ const snd_memory_api_t *mem_api = &snd_mem_win;
 const snd_memory_api_t *mem_api = &snd_mem_native;
 ```
 
-`snd_module_api_t` follows the same contract. `mod_api->get_proc_address` resolves to `GetProcAddress` under `snd_mod_win` and to manual EAT parsing over PEB-walked module bases under `snd_mod_native`. The operator's algorithm never changes regardless of which profile is active.
+`snd_module_api_t` follows the same contract. `mod_api->get_proc_address` resolves to `GetProcAddress` under `snd_mod_win` and to manual EAT parsing over PEB-walked module bases under `snd_mod_native`.
 
 ---
 
@@ -188,7 +174,7 @@ For local development. `snd_status_t` expands to include `file`, `line`, and a 1
 
 ### Silent Tier — `SND_ENABLE_DEBUG=OFF`
 
-The only acceptable configuration for any binary destined for a target environment. Every diagnostic string, file reference, and line number compiles away completely. `snd_status_t` collapses to two integers. Nothing else.
+The standard deployment configuration for operational binaries. Every diagnostic string, file reference, and line number compiles away completely. `snd_status_t` collapses to two integers. Nothing else.
 
 ```cmake
 set(SND_ENABLE_DEBUG   OFF   CACHE BOOL   "")
