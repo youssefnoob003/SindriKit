@@ -1,7 +1,7 @@
 #ifndef SND_PRIMITIVES_FFI_H
 #define SND_PRIMITIVES_FFI_H
 
-#include <sindri/common/helpers.h>
+#include <sindri/common/macros.h>
 #include <windows.h>
 
 SND_BEGIN_EXTERN_C
@@ -24,7 +24,7 @@ SND_BEGIN_EXTERN_C
  * by the assembly bridge. The caller is responsible for ensuring that
  * the argument types and count are compatible with the target function.
  */
-UINT_PTR snd_execute_dynamic(PVOID pFunctionAddress, DWORD dwArgCount, const UINT_PTR *pArgs);
+UINT_PTR snd_ffi_execute(PVOID pFunctionAddress, DWORD dwArgCount, const UINT_PTR *pArgs);
 
 SND_END_EXTERN_C
 

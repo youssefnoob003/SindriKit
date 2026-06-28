@@ -2,7 +2,7 @@
 
 **Location:** `config/hashes.ini`
 
-This INI-style manifest is the single source of truth for all compile-time API string hashes in SindriKit. The build system evaluates it at configure time via `scripts/generate_hashes.py`, which emits a C header of `#define` macros consumed throughout the framework.
+This INI-style manifest is the single source of truth for compile-time API string hashes. CMake runs `scripts/generate_hashes.py` at configure time, emitting **`sindri_hashes.h`** into the build directory (`${CMAKE_BINARY_DIR}/generated/`).
 
 ## Purpose
 
@@ -30,13 +30,15 @@ This produces:
 - `SND_HASH_NTALLOCATEVIRTUALMEMORY` — hash of the export name
 - ... one per API listed.
 
-### Extras Section: `[extras]`
+### Extras Section: `[extras]` (optional)
 
-Standalone strings that do not belong to any module (e.g., registry key names, object manager paths). No module hash is generated for this section — only individual string hashes.
+Standalone strings that do not belong to any module (e.g., registry keys, object paths). The generator supports this section (`scripts/generate_hashes.py`), but **`config/hashes.ini` does not currently define one** — only `[module::…]` sections are present today.
+
+When added, each line produces an individual `SND_HASH_…` define (no module hash for the section):
 
 ```ini
 [extras]
-\\KnownDlls\\ntdll.dll
+SomeStandaloneString
 ```
 
 ### Comments and Whitespace

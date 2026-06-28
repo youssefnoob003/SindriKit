@@ -1,90 +1,146 @@
 # Building SindriKit
 
-SindriKit is built using modern CMake (`>= 3.16`). It supports building either as a standalone executable (for the PoCs) or seamlessly integrating as a static library target (`sindri::engine`) into existing C2 implants and malware staging toolchains.
+SindriKit builds with CMake `>= 3.16` on **Windows only** (`_WIN32` / `_WIN64`). The static library target is `sindri_engine` (alias `sindri::engine`).
 
-The framework is strictly tailored for Windows targets (`_WIN32` or `_WIN64`), aggressively enforcing compiler warnings to prevent unintended implicit type conversions or padding behaviors that often lead to subtle footprint anomalies in memory.
+## First build (PoCs)
 
-## 1. CMake Integration
+```bash
+cmake -B build -DSND_BUILD_PAYLOADS=ON
+cmake --build build --config Release
+```
 
-To embed SindriKit into a custom loader or implant workflow, rewriting the build system is unnecessary. SindriKit exposes `snd_engine` (aliased as `sindri::engine`), which handles all pre-build Python-based API hashing algorithms and architecture-dependent ASM compilation internally.
+Outputs (MSVC multi-config):
 
-Drop the SindriKit repository into the project directory (e.g., `vendor/SindriKit`) and integrate it via `add_subdirectory()`:
+| PoC | Path |
+|---|---|
+| `loader_winapi` | `build/pocs/loader_winapi/Release/` |
+| `loader_nowinapi` | `build/pocs/loader_nowinapi/Release/` |
+| `inject_pe` | `build/pocs/inject_pe/Release/` |
+| `inject_shell` | `build/pocs/inject_shell/Release/` |
+| `heavens_gate` | `build/pocs/heavens_gate/Release/` (requires **x86** / `-A Win32`) |
+
+CRT-less single PoC:
+
+```bash
+cmake -B build -DSND_CRTLESS=ON -DSND_ENABLE_DEBUG=OFF -DSND_BUILD_PAYLOADS=ON
+cmake --build build --config Release
+# → build/pocs/loader_noCRT_nowinapi/Release/
+```
+
+See [Examples](../examples/README.md) for usage.
+
+---
+
+## CMake integration (implant embed)
 
 ```cmake
-# In your parent project's CMakeLists.txt
 cmake_minimum_required(VERSION 3.16)
-project(AdvancedImplant C CXX ASM_MASM)
+project(Implant C CXX ASM_MASM)
 
-# 1. Configure SindriKit Build Options (Optional but Recommended)
-set(SND_BUILD_PAYLOADS OFF CACHE BOOL "Disable standalone PoCs")
-set(SND_ENABLE_DEBUG OFF CACHE BOOL "Disable verbose tracking for production builds")
-set(SND_HASH_ALGO "DJB2" CACHE STRING "Hashing algorithm for API resolution (DJB2, FNV1A)")
+set(SND_BUILD_PAYLOADS OFF CACHE BOOL "")
+set(SND_ENABLE_DEBUG OFF CACHE BOOL "")
+set(SND_CRTLESS ON CACHE BOOL "")          # optional
 
-# 2. Add SindriKit subdirectory
 add_subdirectory(vendor/SindriKit)
 
-# 3. Link your implant against the SindriKit engine
 add_executable(implant src/main.c)
 target_link_libraries(implant PRIVATE sindri::engine)
 ```
 
-### Build Configuration Variables
+Include `sindri.h` or granular headers (`sindri/primitives.h`, etc.). Hash constants come from `#include <sindri_hashes.h>` (generated in the **build tree**, not the source tree).
 
-SindriKit is controlled by several CMake cache variables. The build system is designed to forcefully guard against breaking configurations (e.g., combining CRT-less requirements with standard library diagnostics).
+---
 
-| Variable | Default | Description | Constraints & Side Effects |
+## Cache variables
+
+| Variable | Default | Description | Notes |
 |---|---|---|---|
-| `SND_ENABLE_DEBUG` | `OFF` | Enables verbose tracking, state machine prints, and line-level error contexts. | If `ON`, injects `<stdio.h>` and `printf`/`OutputDebugStringA` into `snd_status_t`. |
-| `SND_USE_PRINTF` | `OFF` | Reroutes debug output from `OutputDebugStringA` to `printf`. | Only effective if `SND_ENABLE_DEBUG=ON`. Requires CRT. |
-| `SND_CRTLESS` | `OFF` | Builds the engine without standard library dependencies, injecting compiler-intrinsic fallbacks (`memcpy`, `memset`). | **Forcefully disables** `SND_ENABLE_DEBUG` and `SND_USE_PRINTF` if enabled to prevent CRT linking. If `SND_BUILD_TESTS` is `ON`, `SND_CRTLESS` is forcefully disabled. |
-| `SND_HASH_ALGO` | `DJB2` | The algorithm used for compile-time API resolution hashing. | Valid options: `DJB2`, `FNV1A`. |
-| `SND_RANDOMIZE_SEED` | `OFF` | Randomizes the 32-bit compile-time global hash seed to thwart static analysis rainbow tables. | If `OFF`, uses a deterministic seed (`0x5381`) to prevent constant recompilation of dependent `.c` files during development. |
-| `SND_BUILD_PAYLOADS` | `OFF` | Compiles the bundled `loader_winapi` and `loader_nowinapi` executables. | Used primarily for PoC verification. |
-| `SND_BUILD_TESTS` | `OFF` | Compiles the internal test suite and PE mutator binaries. | **Requires CRT**. Forcefully sets `SND_CRTLESS=OFF`. |
+| `SND_ENABLE_DEBUG` | `OFF` | Verbose status context, `SND_DEBUG_PRINT`, stage traces | Pulls in `<stdio.h>` when ON |
+| `SND_USE_PRINTF` | `OFF` | Route debug to `stdout` instead of `OutputDebugStringA` | Requires `SND_ENABLE_DEBUG=ON` and CRT |
+| `SND_CRTLESS` | `OFF` | CRT manifest fallbacks; `/NODEFAULTLIB`-friendly | Force-disables DEBUG/PRINTF; only builds `loader_noCRT_nowinapi` PoC |
+| `SND_HASH_ALGO` | `DJB2` | Compile-time hash algorithm (`DJB2`, `FNV1A`) | Regenerates `sindri_hashes.h` at configure |
+| `SND_RANDOMIZE_SEED` | `OFF` | Random `SND_HASH_SEED` per configure | OFF keeps deterministic hashes for faster rebuilds |
+| `SND_BUILD_PAYLOADS` | `OFF` | Build `pocs/` executables | Full set when `SND_CRTLESS=OFF` |
+| `SND_BUILD_TESTS` | `OFF` | Build test payloads + integration harness inputs | **Requires CRT**; forces `SND_CRTLESS=OFF` |
 
+### Guards (CMake)
 
-### Pre-Build Code Generation (Algorithm Agility)
-By default, the framework runs `scripts/generate_hashes.py` at configure time against `config/hashes.ini` to pre-compute compile-time string hashes. The manifest groups API names under `[module::<dll_name>]` sections. The build system automatically generates a hash for both the module and every API listed beneath it. Swapping the hashing algorithm (e.g., from `DJB2` to `FNV1A`) across the entire codebase is a single `SND_HASH_ALGO` CMake variable. This guarantees zero source changes during hash rotation. Furthermore, by passing `SND_RANDOMIZE_SEED=ON`, a totally fresh 32-bit mathematical seed is embedded alongside the hashes, ensuring static footprints continuously rotate.
+- `SND_BUILD_TESTS=ON` → `SND_CRTLESS` forced OFF
+- `SND_CRTLESS=ON` → `SND_ENABLE_DEBUG` and `SND_USE_PRINTF` forced OFF
+- Non-Windows configure → fatal error
 
-## 2. Compiler Configuration and OpSec
+Use a **clean build directory** when switching between CRT-less and test builds.
 
-SindriKit aggressively forces strict compilation. If an operation causes compiler ambiguity, it is treated as a fatal error.
+---
 
-### MSVC Optimization and Footprint
-When building with Microsoft Visual C++ (MSVC), SindriKit enforces `/W4` and `/WX` (warnings as errors). For production builds, this should be coupled with optimization flags to minimize the binary footprint and strip debug artifacts:
+## Pre-build hash generation
+
+At configure time, CMake runs:
+
+```text
+python scripts/generate_hashes.py config/hashes.ini <build>/generated/sindri_hashes.h <ALGO> <RANDOMIZE>
+```
+
+Output: `${CMAKE_BINARY_DIR}/generated/sindri_hashes.h`, on the include path via `target_include_directories`. See [generate_hashes.md](../scripts/generate_hashes.md) and [hashes manifest](../config/hashes_manifest.md).
+
+---
+
+## Compiler configuration (MSVC)
+
+SindriKit enforces `/W4` `/WX` on the engine. Recommended release flags for implants:
 
 ```cmake
-# Recommended MSVC Release Flags for your implant
 if(MSVC)
     target_compile_options(implant PRIVATE
-        /O1                     # Optimize for size
-        /GS-                    # Disable buffer security checks (reduces imports/CRT dependency)
-        /GR-                    # Disable RTTI
-        /Zc:threadSafeInit-     # Disable magic statics (CRT dependency)
+        /O1
+        /GS-
+        /GR-
+        /Zc:threadSafeInit-
     )
-    
-    # Strip PDB paths and enforce dynamic base
     target_link_options(implant PRIVATE
-        /PDBALTPATH:%_PDB%      # Strips local PDB path from PE headers
-        /DYNAMICBASE            # Enforce ASLR
-        /NXCOMPAT               # Enforce DEP
-        /ENTRY:main             # Avoid CRT entrypoint if using pure C (Optional)
+        /PDBALTPATH:%_PDB%
+        /DYNAMICBASE
+        /NXCOMPAT
     )
 endif()
 ```
 
 > [!WARNING]
-> **CRT Independence & Telemetry Leakage**
-> If the CRT is stripped (`/ENTRY:main` or `/NODEFAULTLIB`), the implant must avoid standard C library functions (`malloc`, `printf`, `strcmp`). SindriKit natively supports CRT independence. This is achieved by implementing compiler-intrinsic fallbacks (like `memcpy` and `memset`) within `src/common/crt_manifest.c` and exposing safe string/memory utilities in `include/sindri/common/helpers.h`. 
-> 
-> However, there is a critical consequence: if `SND_ENABLE_DEBUG` or `SND_USE_PRINTF` are enabled, the `snd_status_t` layer will automatically pull in `<stdio.h>` and `printf` to output verbose error contexts. This breaks CRT-less compilation and silently re-introduces telemetry surfaces. Always compile using the `SILENT` tier (`SND_ENABLE_DEBUG=OFF`) for production to guarantee absolute CRT independence.
+> **CRT independence & telemetry**
+> CRT-less builds (`/NODEFAULTLIB`, `/ENTRY:main`) must not use `malloc`, `printf`, or `strcmp`. SindriKit supplies `snd_memcpy` / `snd_memzero` via `memory.h` and `src/common/crt_manifest.c`.
+>
+> Enabling `SND_ENABLE_DEBUG` or `SND_USE_PRINTF` pulls `<stdio.h>` into status/debug paths and breaks CRT-less linking. Production implants: **`SND_ENABLE_DEBUG=OFF`**.
 
-## 3. Build Tiers
+---
 
-SindriKit supports two build tiers controlled by the `SND_ENABLE_DEBUG` flag:
+## Build tiers
 
-- **DEBUG Tier (`SND_ENABLE_DEBUG=ON`)**: Emits the `SND_DEBUG=1` definition. Used during local development. Outputs state machine transitions, parsed PE field values, and syscall resolution failures to `stdout`/`stderr`.
-- **SILENT Tier (`SND_ENABLE_DEBUG=OFF`)**: Emits `SND_DEBUG=0`. Strips all string literals associated with error logging and context tracking out of the `.rdata` section, ensuring zero console output and a significantly reduced artifact footprint on disk.
+| Tier | Setting | Effect |
+|---|---|---|
+| **DEBUG** | `SND_ENABLE_DEBUG=ON` | `SND_DEBUG=1` — file/line/context in `snd_status_t`, debug prints, stage strings |
+| **SILENT** | `SND_ENABLE_DEBUG=OFF` | `SND_DEBUG=0` — integer-only status, stripped `.rdata` diagnostics |
 
-> [!CAUTION]
-> The `SILENT` tier (`SND_ENABLE_DEBUG=OFF`) is the **only** acceptable configuration for compiling production artifacts destined for target environments.
+SILENT is required for production artifacts.
+
+---
+
+## Integration tests layout
+
+The Python test runner (`tests/loader/test_runner.py`) expects **dual-arch** MSVC output trees:
+
+| Path | Contents |
+|---|---|
+| `build64/pocs/` | x64 PoC binaries |
+| `build32/pocs/` | x86 PoC binaries |
+| `build64/tests/loader/` | x64 test payloads |
+| `build32/tests/loader/` | x86 test payloads |
+
+Configure with `SND_BUILD_TESTS=ON` and `SND_ENABLE_DEBUG=ON` (tests match stdout substrings from debug output). See [test_runner.md](../tests/test_runner.md).
+
+---
+
+## Related documentation
+
+- [Getting started: basic usage](basic_usage.md)
+- [Architecture: red-team integration](../architecture/redteam_integration.md)
+- [Common: CRT manifest](../common/infrastructure.md)

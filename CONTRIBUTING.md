@@ -47,7 +47,7 @@ I heavily scrutinize all pull requests against the following architectural const
 ### 1. The Dependency Injection (DI) Contract
 Never hardcode Win32 or Native API calls inside the core logic of an offensive domain (e.g., inside the reflective loader or PE parser). 
 - **Always** consume functions through injected API tables (e.g., `snd_memory_api_t`, `snd_module_api_t`).
-- If you are building a new domain, your context structure (e.g., `snd_injector_ctx_t`) must accept these API tables so the operator can swap execution mechanics at runtime.
+- If you are building a new domain, your context structure (e.g., `snd_injection_ctx_t`) must accept these API tables so the operator can swap execution mechanics at runtime.
 
 ### 2. The Status System (`snd_status_t`)
 Never return raw integers, `NULL` pointers, or standard `NTSTATUS`/`DWORD` error codes from a framework function.

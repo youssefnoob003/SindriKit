@@ -12,11 +12,11 @@ option(SND_RANDOMIZE_SEED "Use randomized seed for compile-time hashes"  OFF)
 # --- Configuration Guards ---
 if(SND_CRTLESS)
     if(SND_BUILD_TESTS)
-        message(WARNING "SindriKit: SND_BUILD_TESTS requires the CRT. Forcing SND_CRTLESS=OFF.")
+        message(WARNING "SindriKit: SND_BUILD_TESTS requires the CRT. Forcing SND_CRTLESS=OFF. (If you chose the correct parameters, do a clean build and try again.)")
         set(SND_CRTLESS OFF CACHE BOOL "Build the framework for pure CRT-less operation" FORCE)
     else()
         if(SND_ENABLE_DEBUG OR SND_USE_PRINTF)
-            message(WARNING "SindriKit: CRT-less build requested. Forcing SND_ENABLE_DEBUG=OFF and SND_USE_PRINTF=OFF.")
+            message(WARNING "SindriKit: CRT-less build requested. Forcing SND_ENABLE_DEBUG=OFF and SND_USE_PRINTF=OFF. (If you chose the correct parameters, do a clean build and try again.)")
             set(SND_ENABLE_DEBUG OFF CACHE BOOL "Enable debug prints and tracking" FORCE)
             set(SND_USE_PRINTF OFF CACHE BOOL "Use printf instead of OutputDebugString" FORCE)
         endif()
@@ -29,13 +29,13 @@ endif()
 
 # --- Architecture-specific assembly ---
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
-    set(SYSCALL_ASM   src/primitives/syscalls/asm/invoke_x64.asm)
-    set(EXECUTION_ASM src/primitives/execution/ffi/ffi_x64.asm)
+    set(SYSCALL_ASM   src/primitives/execution/syscalls/asm/invoke_x64.asm)
+    set(EXECUTION_ASM src/primitives/execution/ffi/asm/ffi_x64.asm)
     set(HEAVENSGATE_ASM "")
 else()
-    set(SYSCALL_ASM   src/primitives/syscalls/asm/invoke_x86.asm)
-    set(EXECUTION_ASM src/primitives/execution/ffi/ffi_x86.asm)
-    set(HEAVENSGATE_ASM src/primitives/execution/heavens_gate/heavens_gate_x86.asm)
+    set(SYSCALL_ASM   src/primitives/execution/syscalls/asm/invoke_x86.asm)
+    set(EXECUTION_ASM src/primitives/execution/ffi/asm/ffi_x86.asm)
+    set(HEAVENSGATE_ASM src/primitives/execution/heavens_gate/asm/heavens_gate_x86.asm)
 endif()
 
 # --- Compile-time hash generation ---
@@ -66,41 +66,51 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${HASH_MANIFEST} 
 add_library(sindri_engine STATIC
     # Common
     src/common/status.c
-    src/common/helpers.c
+    src/common/debug.c
     src/common/buffer.c
     src/common/hash.c
     src/common/disk.c
     # PE parser
-    src/parsers/pe/pe_parser.c
-    src/parsers/pe/pe_exports.c
-    src/parsers/pe/pe_imports.c
-    src/parsers/pe/pe_relocations.c
-    src/parsers/pe/pe_utils.c
-    src/parsers/pe/pe_section_utils.c
+    src/parsers/pe/parser.c
+    src/parsers/pe/exports.c
+    src/parsers/pe/imports.c
+    src/parsers/pe/relocations.c
+    src/parsers/pe/utils.c
+    src/parsers/pe/section_utils.c
+    # Environment parsers
+    src/parsers/env/peb.c
     # Reflective loader
     src/loaders/reflective/engine.c
     src/loaders/reflective/chain.c
-    # KnownDlls loader
-    src/loaders/knowndlls/knowndlls.c
-    src/loaders/knowndlls/win.c
-    src/loaders/knowndlls/native.c
+    # Injection domain
+    src/injection/context.c
+    src/injection/classic/engine.c
+    src/injection/classic/chain.c
     # Memory primitives
     src/primitives/memory/win.c
-    src/primitives/memory/native.c
+    src/primitives/memory/sys.c
+    src/primitives/memory/nt.c
+    # Mapping primitives
+    src/primitives/mapping/win.c
+    src/primitives/mapping/sys.c
+    src/primitives/mapping/nt.c
     # Module primitives
     src/primitives/modules/win.c
-    src/primitives/modules/native.c
-    src/primitives/modules/peb.c
-    # Syscall resolvers
-    src/primitives/syscalls/syscalls.c
-    src/primitives/syscalls/hellsgate.c
-    src/primitives/syscalls/halosgate.c
-    src/primitives/syscalls/tartarusgate.c
-    src/primitives/syscalls/velesreek.c
-    src/primitives/syscalls/internal/neighbor.c
+    src/primitives/modules/nt.c
+    # Process primitives
+    src/primitives/process/win.c
+    src/primitives/process/sys.c
+    src/primitives/process/nt.c
+    # Object manager
+    src/primitives/object_manager/knowndlls.c
     # Execution
     src/primitives/execution/ffi/ffi_invoke.c
     src/primitives/execution/heavens_gate/heavens_gate.c
+    # Syscall resolvers
+    src/primitives/execution/syscalls/syscalls.c
+    src/primitives/execution/syscalls/syscalls_scan.c
+    src/primitives/execution/syscalls/syscalls_sort.c
+
     # Assembly & generated
     ${SYSCALL_ASM}
     ${EXECUTION_ASM}

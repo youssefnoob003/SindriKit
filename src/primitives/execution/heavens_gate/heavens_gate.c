@@ -13,7 +13,7 @@ snd_status_t snd_hg_execute_64(UINT64 pFunctionAddress, DWORD dwArgCount, const 
     (void)dwArgCount;
     (void)pArgs;
     (void)pResult;
-    return SND_ERR(SND_STATUS_UNSUPPORTED);
+    return SND_ERR(SND_STATUS_ARCH_MISMATCH);
 }
 
 #elif defined(_WIN32)
@@ -22,7 +22,7 @@ snd_status_t snd_hg_execute_64(UINT64 pFunctionAddress, DWORD dwArgCount, const 
  * External linkage: the MASM x86 Heaven's Gate bridge.
  * The ASM expects a strict 6-element array to prevent memory violations.
  * ------------------------------------------------------------------------- */
-extern UINT64 snd_invoke_hg_x86(UINT64 pFunctionAddress, const UINT64 *pArgs);
+extern UINT64 snd_hg_invoke_x86(UINT64 pFunctionAddress, const UINT64 *pArgs);
 
 BOOL snd_is_wow64(void) {
     void *pWow32Reserved = (void *)__readfsdword(0xC0);
@@ -31,20 +31,20 @@ BOOL snd_is_wow64(void) {
 
 snd_status_t snd_hg_execute_64(UINT64 pFunctionAddress, DWORD dwArgCount, const UINT64 *pArgs, UINT64 *pResult) {
     if (pFunctionAddress == 0) {
-        return SND_ERR(SND_STATUS_INVALID_PARAMETER);
+        return SND_ERR(SND_STATUS_NULL_POINTER);
     }
 
     // Enforce a maximum of 6 arguments to align with our static ASM wrapper
     if (dwArgCount > 6) {
-        return SND_ERR_CTX(SND_STATUS_INVALID_PARAMETER, "Heaven's Gate bridge supports a maximum of 6 arguments.");
+        return SND_ERR_CTX(SND_STATUS_TOO_MANY_ARGUMENTS, "Heaven's Gate bridge supports a maximum of 6 arguments.");
     }
 
     if (dwArgCount > 0 && pArgs == NULL) {
-        return SND_ERR(SND_STATUS_INVALID_PARAMETER);
+        return SND_ERR(SND_STATUS_NULL_POINTER);
     }
 
     if (!snd_is_wow64()) {
-        return SND_ERR(SND_STATUS_UNSUPPORTED);
+        return SND_ERR(SND_STATUS_ARCH_MISMATCH);
     }
 
     UINT64 safe_args[6] = {0};
@@ -52,7 +52,7 @@ snd_status_t snd_hg_execute_64(UINT64 pFunctionAddress, DWORD dwArgCount, const 
         safe_args[i] = pArgs[i];
     }
 
-    UINT64 result = snd_invoke_hg_x86(pFunctionAddress, safe_args);
+    UINT64 result = snd_hg_invoke_x86(pFunctionAddress, safe_args);
     if (pResult) {
         *pResult = result;
     }

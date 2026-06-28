@@ -17,7 +17,7 @@ Most offensive utilities hardcode their execution mechanics inside the technique
 
 SindriKit solves this by enforcing a separation of concerns via interface abstraction tables:
 
-1. **The Technique Logic:** (e.g., loaders, injectors, patchers) deals with state tracking and data orchestration. It has no knowledge of how memory is allocated or how threads are created.
+1. **The Technique Logic:** (e.g., loaders, injections, patchers) deals with state tracking and data orchestration. It has no knowledge of how memory is allocated or how threads are created.
 2. **The Execution Mechanics:** (e.g., Win32 API, Native NTAPI, Direct Syscalls) are inside independent API tables and injected into the technique at runtime.
 
 By shifting execution mechanics to runtime function pointers, you can swap your entire strategy from Win32 calls to raw direct syscalls with a single line of code—without changing your payload execution logic.
@@ -27,7 +27,7 @@ By shifting execution mechanics to runtime function pointers, you can swap your 
 ## Design Architecture
 
 * **Decoupled Execution Profiles:** Swap underlying memory, module, and thread manipulation behaviors via function pointer tables without breaking the calling technique.
-* **Cascading Syscall Fallbacks:** Dynamically fall back through a priority queue of syscall extraction strategies (Hell's Gate, Halo's Gate, etc.) until one evades detection.
+* **Cascading Syscall Fallbacks:** Pluggable SSN resolvers (`snd_syscall_resolve_ssn_scan`, `snd_syscall_resolve_ssn_sort`) with a priority chain — swap or extend strategies without touching domain code.
 * **Compile-Time Obfuscation:** String and API hashing algorithms (DJB2, FNV1A) can be swapped globally via CMake. Compiling automatically randomizes the global seed to alter static signatures.
 * **Release Builds:** A silent tier strips all diagnostic strings, file descriptors, and tracking frames from the final binary, reducing your static footprint to bare primitives.
 
@@ -70,7 +70,8 @@ Just two lines for your tool to inherit all of SindriKit's capabilities: PE pars
         │                     SINDRIKIT API ABSTRACTION LAYER                        │
         │      snd_memory_api_t  ->  alloc · free · protect                          │
         │      snd_module_api_t  ->  load_library · get_proc_address · ...           │
-        │      [ future tables ] ->  thread · process · object · ...                 │
+        │      snd_process_api_t ->  open · alloc_remote · write · protect · thread  │
+        │      [ future tables ] ->  thread · object · ...                 │
         ├──────────────────┬──────────────────────┬──────────────────────────────────┤
         │   Win32 Profile  │    Native Profile    │    Bring Your Own Mechanic       │
         │  VirtualAlloc    │  NtAllocateVirtual   │  Driver · ROP · Exotic           │
@@ -81,21 +82,21 @@ Just two lines for your tool to inherit all of SindriKit's capabilities: PE pars
 In practice, this means every domain follows the same contract:
 
 ```c
-// Reflective Loader
-snd_loader_ctx_t loader = {0};
-loader.raw_source = &payload;
-loader.mem_api    = &snd_mem_native;
-loader.mod_api    = &snd_mod_native;
-snd_prepare_reflective_image(&loader);
-snd_execute_reflective_image(&loader);
+// Reflective loader
+snd_ldr_pe_ctx_t ctx = {0};
+ctx.raw_source = &payload;
+ctx.mem_api    = &snd_mem_win;   // or snd_mem_nt / snd_mem_sys
+ctx.mod_api    = &snd_mod_win;   // or snd_mod_nt
+snd_ldr_pe_prepare_image(&ctx);
+snd_ldr_pe_execute_image(&ctx);
 
-// Remote Injector (planned)
-snd_injector_ctx_t injector = {0};
-injector.mem_api    = &snd_mem_native;
-injector.target_pid = 1337;
-snd_execute_injection(&injector);
-
-// ETW Patcher, Stack Spoofer, Credential Harvester... Same approach.
+// Classic injection
+snd_inj_ctx_t inj = {0};
+inj.target_pid = 1337;
+inj.payload    = &shellcode;
+inj.proc_api   = &snd_proc_sys;  // or snd_proc_win / snd_proc_nt
+snd_inj_classic_shell(&inj);
+snd_inj_cleanup(&inj);
 ```
 
 ### Cascading Syscall Pipeline
@@ -103,10 +104,9 @@ snd_execute_injection(&injector);
 SindriKit treats syscall resolution as an injectable mechanic, stacking strategies in priority order. The engine falls through until one succeeds:
 
 ```c
-snd_set_syscall_strategy(snd_hell_extract_syscall);
-snd_add_syscall_strategy(snd_halo_extract_syscall);
-snd_add_syscall_strategy(snd_veles_extract_syscall);
-snd_add_syscall_strategy(any_other_technique_you_want);
+snd_syscall_set_ntdll(clean_ntdll);
+snd_syscall_strategy_set(snd_syscall_resolve_ssn_scan);
+snd_syscall_strategy_add(snd_syscall_resolve_ssn_sort);
 ```
 
 ### Compile-Time Algorithm Agility
@@ -141,28 +141,25 @@ Every offensive operation is managed through a discrete context structure with s
 
 ## The API Design Philosophy
 
-Bootstrap the execution subsystem once:
+Bootstrap the syscall pipeline once (typical pattern):
 
 ```c
 PVOID clean_ntdll = NULL;
-snd_map_knowndll(&snd_knowndlls_win, L"ntdll.dll", &clean_ntdll);
-snd_set_ntdll(clean_ntdll);
-
-snd_set_syscall_strategy(snd_hell_extract_syscall);
-snd_add_syscall_strategy(snd_halo_extract_syscall);
+snd_om_knowndll_map(&snd_map_nt, L"ntdll.dll", &clean_ntdll);
+snd_syscall_set_ntdll(clean_ntdll);
+snd_syscall_strategy_set(snd_syscall_resolve_ssn_scan);
+snd_syscall_strategy_add(snd_syscall_resolve_ssn_sort);
 ```
 
-One line to change your entire execution strategy:
+Swap execution profile with one assignment:
 
 ```c
-// Win32 profile
-const snd_memory_api_t *mem_api = &snd_mem_win;
-
-// Native profile. Everything above this line stays identical
-const snd_memory_api_t *mem_api = &snd_mem_native;
+ctx.mem_api = &snd_mem_win;   // diagnostic
+ctx.mem_api = &snd_mem_nt;    // NT stubs via PEB + EAT
+ctx.mem_api = &snd_mem_sys;   // direct syscalls (pipeline required)
 ```
 
-`snd_module_api_t` follows the same contract. `mod_api->get_proc_address` resolves to `GetProcAddress` under `snd_mod_win` and to manual EAT parsing over PEB-walked module bases under `snd_mod_native`.
+Module resolution follows the same pattern (`snd_mod_win` vs `snd_mod_nt`). There is no syscall-backed module backend — imports use PEB walk + EAT even in full `_sys` profiles.
 
 ---
 
@@ -189,22 +186,33 @@ target_link_libraries(my_tool PRIVATE sindri::engine)
 
 ## Documentation
 
-- **[Getting Started](docs/getting_started/)** — Installation, CMake integration, and bootstrapping the engine.
-- **[Core Architecture](docs/architecture/)** — The design philosophy, state machines, dependency injection.
-- **[Domain: Primitives](docs/domains/primitives/)** — Direct syscall pipelines (Hell's Gate / Halo's Gate etc).
-- **[Domain: Loaders](docs/domains/loaders/)** — The staged reflective PE loading pipeline and KnownDlls bootstrapping.
-- **[Parsers](docs/parsers/)** — Bounds-checked PE32/PE32+ parsing: exports, imports, relocations.
-- **[Infrastructure](docs/common/)** — Common API definitions, configuration, and hash manifests.
-- **[Tooling & Tests](docs/tests/)** — Test runner, PE mutator, and Python scripts.
-- **[Examples & PoCs](docs/examples/)** — Step-by-step walkthroughs of `loader_winapi` and `loader_nowinapi`.
+Full reference under [`docs/`](docs/README.md):
 
-*Planned: **[Injection](docs/domains/injection/)** and **[Evasion](docs/domains/evasion/)** domains.*
+- **[Getting Started](docs/getting_started/)** — CMake, build tiers, DI bootstrap, first loader/injection workflow
+- **[Architecture](docs/architecture/)** — Dependency injection, state machines, status system
+- **[Primitives](docs/domains/primitives/)** — Memory, modules, process, mapping, syscalls, execution (FFI)
+- **[Loaders](docs/domains/loaders/)** — Reflective PE pipeline
+- **[Injection](docs/domains/injection/)** — Classic shellcode and PE injection
+- **[Parsers](docs/parsers/)** — PE and env (PEB) subdomains
+- **[Common](docs/common/)** — CRT-free helpers, buffers, hashing, status
+- **[Examples & PoCs](docs/examples/)** — `loader_winapi`, `loader_nowinapi`, `inject_pe`, `inject_shell`, `heavens_gate`
+- **[Tests](docs/tests/)** — Integration runner, PE mutator
+
+*Planned: **[Evasion](docs/domains/evasion/)** domain.*
 
 ---
 
 ## Disclaimer
 
 **SindriKit is built for educational, research, and authorized Red Teaming purposes only.** For the full legal disclaimer and information regarding OpSec considerations, see the [Security Policy](SECURITY.md).
+
+---
+
+## Support the Project
+
+SindriKit is open-source and built for the community. If this framework saved you development time or assisted in your research, consider supporting independent offensive R&D:
+
+* **BTC:** `bc1qsm7dsdsqmlwcw3f7uarxgx0mlu8tlxnyd7y2gz`
 
 ---
 

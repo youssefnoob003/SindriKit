@@ -1,7 +1,12 @@
 # Build Scripts
 
-This directory documents the pre-build automation scripts that generate source code artifacts consumed during compilation.
+Pre-build automation that generates compile-time artifacts.
 
 ## Table of Contents
-- [generate_hashes.md](generate_hashes.md)
-  Technical breakdown of the compile-time hash generation pipeline, including the randomized seed anti-analysis mechanism and the manifest format.
+
+- [generate_hashes.md](generate_hashes.md) — hash pipeline, randomized seed, manifest integration
+
+## Related documentation
+
+- [Config: hashes manifest](../config/hashes_manifest.md)
+- [Common: hashing](../common/infrastructure.md)

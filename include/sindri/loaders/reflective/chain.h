@@ -1,7 +1,7 @@
 #ifndef SND_LOADERS_REFLECTIVE_CHAIN_H
 #define SND_LOADERS_REFLECTIVE_CHAIN_H
 
-#include <sindri/common/helpers.h>
+#include <sindri/common/macros.h>
 #include <sindri/loaders/reflective/engine.h>
 
 SND_BEGIN_EXTERN_C
@@ -14,7 +14,7 @@ SND_BEGIN_EXTERN_C
  * @note Wraps compatibility check, copy, relocation, imports, protections, and
  * TLS.
  */
-snd_status_t snd_prepare_reflective_image(snd_loader_ctx_t *ctx);
+snd_status_t snd_ldr_pe_prepare_image(snd_ldr_pe_ctx_t *ctx);
 
 /**
  * @brief Executes the loaded image entry point.
@@ -22,14 +22,14 @@ snd_status_t snd_prepare_reflective_image(snd_loader_ctx_t *ctx);
  * @param ctx Prepared loader context.
  * @return SND_OK on success, otherwise execution error.
  */
-snd_status_t snd_execute_reflective_image(snd_loader_ctx_t *ctx);
+snd_status_t snd_ldr_pe_execute_image(snd_ldr_pe_ctx_t *ctx);
 
 /**
  * @brief Cleans up and detaches the reflective image state.
  *
  * @param ctx Reflective loader context.
  */
-void snd_detach_reflective_image(snd_loader_ctx_t *ctx);
+void snd_ldr_pe_detach_image(snd_ldr_pe_ctx_t *ctx);
 
 SND_END_EXTERN_C
 

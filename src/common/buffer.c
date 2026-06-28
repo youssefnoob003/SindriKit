@@ -1,7 +1,6 @@
 #include <sindri/common/buffer.h>
-#include <windows.h>
 
-void snd_buffer_init(snd_buffer_t *buf, LPVOID data, SIZE_T size, snd_free_cb free_routine) {
+void snd_buffer_init(snd_buffer_t *buf, void *data, size_t size, snd_free_cb free_routine) {
     if (!buf)
         return;
 

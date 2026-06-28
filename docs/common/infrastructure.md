@@ -1,98 +1,146 @@
 # Common Infrastructure
 
-The `include/sindri/common/` headers provide the shared utilities that every domain in the framework depends on. They solve three fundamental problems: eliminating the C Runtime dependency, tracking buffer bounds to prevent memory corruption, and removing plaintext API strings from the compiled binary.
+Conceptual overview of the shared utilities in `include/sindri/common/`. For function signatures see [api_reference.md](api_reference.md).
+
+---
+
+## Module layout (post-refactor)
+
+The former monolithic `helpers.h` and `nt_defs.h` were split for clarity:
+
+```
+include/sindri/common/
+├── macros.h      ← compiler / linkage macros (was part of helpers)
+├── memory.h      ← bounds + memzero/memcpy + SND_PTR_ADD
+├── string.h      ← ASCII + wide string helpers (new wide APIs)
+├── buffer.h      ← tracked buffers
+├── hash.h
+├── status.h
+├── debug.h       ← debug macros (was mixed into helpers)
+└── disk.h
+
+include/sindri/internal/nt/   ← was sindri/internal/nt_defs.h
+├── types.h       ← NT structs, SND_PAGE_SIZE, unicode init
+├── api.h         ← Nt* typedefs
+└── peb.h         ← PEB / LDR layouts
+```
 
 ---
 
 ## CRT Independence
 
-SindriKit is designed to compile under `/NODEFAULTLIB` (MSVC), completely stripping the Microsoft C Runtime from the final binary. This is a hard requirement for position-independent shellcode and for minimizing the import table footprint of implants.
+SindriKit compiles under `/NODEFAULTLIB` for minimal import footprint. CRT replacements live in **`memory.h`** and **`string.h`** (header-only inlines):
 
-The standard C library functions that the framework requires are reimplemented as compiler-intrinsic-safe inline functions inside `include/sindri/common/helpers.h`:
-
-| CRT Function | SindriKit Replacement | Notes |
+| CRT | SindriKit | Header |
 |---|---|---|
-| `memset` | `snd_memzero` | Uses `volatile BYTE*` to prevent compiler optimization from eliding the zeroing loop |
-| `memcpy` | `snd_memcpy` | Byte-by-byte copy with no alignment assumptions |
-| `strnlen` | `snd_strnlen` | Bounded length evaluation |
-| `strncpy` / `strncpy_s` | `snd_strncpy` | Truncation-safe; always null-terminates |
-| `strcat` / `strcat_s` | `snd_strncat` | Bounded concatenation with null-termination guarantee |
-| `strchr` | `snd_strnchr` | Bounded character search |
-| `strcmp` / `strncmp` | `snd_strncmp` | Bounded comparison returning standard `<0 / 0 / >0` semantics |
+| `memset` | `snd_memzero` | `memory.h` |
+| `memcpy` | `snd_memcpy` | `memory.h` |
+| `strnlen` | `snd_strnlen` | `string.h` |
+| `strncpy` | `snd_strncpy` | `string.h` |
+| `strncat` | `snd_strncat` | `string.h` |
+| `strchr` | `snd_strnchr` | `string.h` |
+| `strncmp` | `snd_strncmp` | `string.h` |
+| `wcsnlen` | `snd_wcsnlen` | `string.h` |
+| `wcsnicmp` | `snd_wcsnicmp` | `string.h` |
+| `wcsncpy` | `snd_wcsncpy` | `string.h` |
+| `wcsncat` | `snd_wcsncat` | `string.h` |
+| `mbstowcs` (ASCII→wide) | `snd_ascii_to_wide` | `string.h` |
 
-Additionally, `src/common/crt_manifest.c` provides the compiler-required `memcpy` and `memset` symbols that MSVC's code generation emits implicitly (e.g., for struct copies and zero-initialization). Without these symbols, linking under `/NODEFAULTLIB` produces unresolved external errors even if the source code never explicitly calls `memcpy`.
+### CRT manifest (`src/common/crt_manifest.c`)
+
+MSVC may emit implicit `memcpy`/`memset` calls (struct copies, zero-init). Under `/NODEFAULTLIB`, `crt_manifest.c` provides global `memcpy`/`memset` symbols for the linker.
+
+> Do **not** call `memcpy`/`memset` explicitly in framework code — use `snd_memcpy` / `snd_memzero`.
 
 > [!CAUTION]
-> Enabling `SND_DEBUG=1` or `SND_USE_PRINTF=1` pulls in `<stdio.h>` and `<stdarg.h>`, which reintroduce CRT dependencies. These flags **must** be disabled (`SND_DEBUG=0`) for any `/NODEFAULTLIB` build.
+> `SND_DEBUG=1` or `SND_USE_PRINTF=1` pulls in `<stdio.h>` / `<stdarg.h>`. Disable debug for `/NODEFAULTLIB` release builds.
 
 ---
 
-## Buffer Bounds Tracking
+## Buffer bounds tracking
 
-SindriKit wraps all raw memory pointers in a `snd_buffer_t` structure that pairs the data pointer with a tracked size. Every access into a buffer — whether parsing PE headers, walking export tables, or applying relocations — is routed through bounds-checking functions that validate `(offset, size)` against the tracked total before dereferencing.
+Raw pointers are wrapped in `snd_buffer_t` (`data`, `size`, optional `free_routine`). Access validation is layered:
 
-### `snd_buffer_t`
+1. **`snd_memory_bounds_check(total, offset, size)`** — pure arithmetic (`memory.h`)
+2. **`snd_buffer_bounds_check(buf, offset, size)`** — against a tracked buffer (`buffer.h`)
+3. **`snd_memory_ptr_bounds_check(base, total, ptr, size)`** — arbitrary pointer in a region (`memory.h`)
 
-```c
-struct snd_buffer_s {
-    LPVOID     data;
-    SIZE_T     size;
-    snd_free_cb free_routine;  // optional cleanup callback
-};
-```
+All return `1` if in bounds, `0` otherwise (not Win32 `BOOL` typedef, but equivalent semantics).
 
-The `free_routine` callback supports polymorphic deallocation: the same `snd_buffer_free` function correctly handles buffers backed by `HeapAlloc`, `VirtualAlloc`, or `MapViewOfFile` by dispatching through the stored callback.
+The PE parser's `snd_pe_rva_to_ptr` and syscall neighbor scan use these checks before dereferencing.
 
-### Bounds Checking Pipeline
+### Polymorphic free
 
-All bounds validation is implemented as force-inlined functions to eliminate call overhead:
+`snd_buffer_free` dispatches through `free_routine`:
 
-1. `snd_bounds_check(total_size, offset, size)` — pure arithmetic validation.
-2. `snd_buffer_bounds_check(buf, offset, size)` — validates against a tracked `snd_buffer_t`.
-3. `snd_ptr_bounds_check(base, total_size, ptr, size)` — validates an arbitrary pointer against a known base region.
-
-These functions catch both overflow and underflow conditions. The PE parser's `snd_pe_rva_to_ptr` is the primary consumer, rejecting any RVA that would resolve outside the tracked image.
+| Callback | Backend |
+|---|---|
+| `snd_buffer_free_heap` | `HeapFree` |
+| `snd_buffer_free_virtual` | `VirtualFree` |
+| `snd_buffer_free_mapped` | `UnmapViewOfFile` |
 
 ---
 
-## API Hashing
+## API hashing
 
-To eliminate plaintext API strings (like `NtAllocateVirtualMemory` or `kernel32.dll`) from the binary's `.rdata` section, SindriKit pre-computes hashes of all required API names at configure time. The CMake build system runs `scripts/generate_hashes.py` against `config/hashes.ini`, which lists every module and function the framework resolves.
+Compile-time hashes are generated from `config/hashes.ini` into **`sindri_hashes.h`** in the CMake build directory (`${CMAKE_BINARY_DIR}/generated/`). Runtime functions in `hash.h`:
 
-### Hash Variants
-
-Three runtime hashing functions are provided to match the contexts in which strings are encountered:
-
-| Function | Input | Casing | Use Case |
+| Function | Input | Casing | Typical use |
 |---|---|---|---|
-| `snd_hash` | `const char*` | Case-sensitive | Export names from the PE Export Directory (e.g., `NtAllocateVirtualMemory`) |
-| `snd_hash_lower` | `const char*` | Lowercased | DLL names from the PE Import Directory (e.g., `KERNEL32.dll` → lowered) |
-| `snd_hash_wide_lower` | `const wchar_t*` | Lowercased | Module names from the PEB `BaseDllName` (UTF-16) |
+| `snd_hash` | `const char*` | Sensitive | Export names (`NtAllocateVirtualMemory`) |
+| `snd_hash_lower` | `const char*` | Lowercased | Import DLL names |
+| `snd_hash_wide_lower` | `const wchar_t*` | Lowercased | PEB `BaseDllName` |
 
-The hashing algorithm itself is swappable at configure time via the `SND_HASH_ALGO` CMake variable (e.g., `DJB2`, `FNV1A`). The Python script also generates a randomized compile-time seed per build run, ensuring that hash values are unique across builds and cannot be signature-matched.
+Algorithm and seed are configured via CMake (`SND_HASH_ALGO`, `SND_RANDOMIZE_SEED`). See [config/hashes manifest](../config/hashes_manifest.md).
 
 ---
 
-## Debug Output System
+## Status system
 
-SindriKit implements a two-tier debug output system controlled by the `SND_DEBUG` and `SND_USE_PRINTF` preprocessor macros:
+All fallible framework functions return `snd_status_t` with:
 
-| `SND_DEBUG` | `SND_USE_PRINTF` | Output Destination | CRT Required |
-|---|---|---|---|
-| `0` | N/A | All macros compile to no-ops; zero strings emitted | No |
-| `1` | `1` | `stdout` / `stderr` via `fprintf` | Yes |
-| `1` | `0` | Windows kernel debugger via `OutputDebugStringA` | Partial (`vsnprintf`) |
+- `code` — `snd_status_code_t` enum (PE, loader, syscall, PEB, OS error ranges)
+- `os_error` — captured `GetLastError()` or `NTSTATUS` at failure site
 
-The two primary macros are:
-- `SND_DEBUG_PRINT(fmt, ...)` — outputs to the default destination.
-- `SND_FDEBUG_PRINT(stream, fmt, ...)` — outputs to a specific file stream (only meaningful when `SND_USE_PRINTF=1`).
+Convenience macros: `SND_SUCCEEDED(x)`, `SND_FAILED(x)`.
 
-When `SND_DEBUG=0`, both macros expand to empty `do { (void)0; } while(0)` blocks. The compiler strips all format string literals and argument evaluations from the binary entirely.
+When `SND_DEBUG=1`, the struct also carries `file`, `line`, and a 128-byte `context` buffer populated by `SND_ERR_CTX` / `SND_ERR_W32_CTX` / `SND_ERR_NT_CTX`.
+
+When `SND_DEBUG=0`, context formatting is stripped — only integers remain. See [status system architecture](../architecture/status_system.md).
+
+---
+
+## Debug output (`debug.h`)
+
+| `SND_DEBUG` | `SND_USE_PRINTF` | Output |
+|---|---|---|
+| `0` | — | All debug macros compile to no-ops |
+| `1` | `1` | `fprintf` to stdout/stderr |
+| `1` | `0` | `OutputDebugStringA` via internal `vsnprintf` buffer |
+
+- **`SND_DEBUG_PRINT(fmt, …)`** — default debug line
+- **`SND_FDEBUG_PRINT(stream, fmt, …)`** — stream-specific (printf mode only)
+- **`SND_FALLBACK_STR(s)`** — returns `s` in debug builds, `""` in release (strips stage-name strings from `.rdata`)
+- **`snd_dump_hex`** — hex+ASCII dump (gated by `SND_DEBUG`)
 
 ---
 
 ## Disk I/O
 
-The `snd_buffer_load_from_disk` utility reads an entire file into a heap-allocated `snd_buffer_t`. It uses Win32 `CreateFileA` / `ReadFile` internally and sets the buffer's `free_routine` to `snd_buffer_free_heap` for automatic cleanup.
+`snd_disk_buffer_load` reads a full file into a heap buffer with `snd_buffer_free_heap`. Used by PoCs; production implants typically receive payloads over the network into pre-allocated buffers.
 
-This function is used exclusively by the PoC executables to load raw PE payloads from disk. In a production implant, the payload would typically arrive over a network channel and be written directly into a pre-allocated buffer, bypassing disk I/O entirely.
+---
+
+## Internal NT types (moved from common)
+
+NT-specific constants and layouts no longer live under `common/`. Key items in `internal/nt/types.h`:
+
+| Symbol | Purpose |
+|---|---|
+| `SND_NT_SUCCESS(status)` | NTSTATUS success test |
+| `SND_PAGE_SIZE` | `0x1000` |
+| `SND_OBJ_CASE_INSENSITIVE` | Object Manager attribute flag |
+| `SND_InitializeObjectAttributes` | Initialize `SND_OBJECT_ATTRIBUTES` |
+| `snd_init_unicode_string` | Build `SND_UNICODE_STRING` from wide buffer + length |
+
+Function typedefs (`SND_NtOpenSection_t`, etc.) are in `internal/nt/api.h`. PEB structures are in `internal/nt/peb.h`.

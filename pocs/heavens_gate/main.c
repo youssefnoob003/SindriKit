@@ -48,7 +48,7 @@ int main(void) {
     UINT64       result = 0;
     snd_status_t status = snd_hg_execute_64((UINT64)(ULONG_PTR)pExec, 0, NULL, &result);
 
-    if (status.code == SND_SUCCESS) {
+    if (SND_SUCCEEDED(status)) {
         printf("[+] Heaven's Gate execution successful!\n");
         printf("[+] 64-bit code returned: 0x%llx (Expected: 0x1122334455667788)\n", result);
     } else {

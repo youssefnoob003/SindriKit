@@ -14,7 +14,7 @@
  *
  * ARCHITECTURAL WARNING:
  * Do not call these functions explicitly in SindriKit source code. Always use
- * the position-independent `snd_*` primitives defined in `helpers.h` for manual
+ * the position-independent `snd_*` primitives defined in `macros.h` for manual
  * operations.
  */
 

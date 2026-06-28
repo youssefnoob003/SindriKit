@@ -1,30 +1,122 @@
-# Cascading Syscall Pipeline
+# Syscall Execution Pipeline
 
-Windows EDRs instrument the kernel boundary by placing inline hooks inside `ntdll.dll` userland syscall stubs. When an implant calls `NtAllocateVirtualMemory`, it hits the hooked stub before reaching the kernel. The EDR inspects arguments, the call stack, and the execution context before deciding whether to allow or block the transition. 
+EDRs hook `ntdll.dll` syscall stubs in userland. Direct syscalls skip those stubs: the operator resolves the System Service Number (SSN) for a target `Nt*` function and invokes `syscall` with that number.
 
-Direct syscall invocation bypasses this entirely: if the operator knows the System Service Number (SSN) for the target function, the `syscall` instruction can be issued directly, transitioning straight to the kernel.
+SSNs vary across Windows builds. SindriKit resolves them dynamically at runtime against a caller-supplied `ntdll` image.
 
-The challenge is reliable SSN resolution. The SSN for any given NT function is not stable across Windows versions or patch levels. It must be extracted at runtime from the in-memory `ntdll.dll` image. SindriKit implements four distinct strategies (Gates) for this, arranged into a user-configured cascading fallback pipeline.
+---
 
-## The Pipeline Design
+## Lifecycle
 
-SindriKit composes the various gate strategies into a single ordered pipeline. 
-
-- `snd_set_syscall_strategy()` sets the primary strategy and resets any existing chain. 
-- `snd_add_syscall_strategy()` appends fallbacks (maximum chain depth: 4). 
-- When `snd_resolve_syscall()` is called, it attempts each strategy in registration order and returns the first successful result. A strategy that returns any error causes an immediate retry with the next entry in the pipeline.
-
-### Full-Coverage Implementation
-A full-coverage pipeline that handles unhooked, lightly hooked, and aggressively hooked environments looks like this:
-
-```c
-snd_set_syscall_strategy(snd_hell_extract_syscall);
-snd_add_syscall_strategy(snd_halo_extract_syscall);
-snd_add_syscall_strategy(snd_tartarus_extract_syscall);
-snd_add_syscall_strategy(snd_veles_extract_syscall);
+```mermaid
+flowchart LR
+    A["1. snd_syscall_set_ntdll"] --> B["2. snd_syscall_strategy_set / _add"]
+    B --> C["3. snd_syscall_resolve"]
+    C --> D["4. snd_syscall_invoke_asm"]
 ```
 
-If all four strategies fail for a given function, `snd_resolve_syscall()` returns `SND_STATUS_SSN_NOT_FOUND`.
+### 1. Provide `ntdll` base
 
-> [!IMPORTANT]
-> `snd_set_ntdll()` (from `sindri/primitives/modules.h`) **must** be called before any resolution attempt. There is no implicit fallback. Feed it either the PEB-resident `ntdll.dll` base or, for a cleaner baseline, a base obtained via the KnownDlls mapping technique.
+Register the image used for SSN extraction:
+
+```c
+snd_syscall_set_ntdll(ntdll_base);
+```
+
+| Source | Trade-off |
+|---|---|
+| PEB-resident `ntdll` | No I/O; may reflect hooked stubs (scan falls back to neighbor search) |
+| KnownDlls map | Clean text section; recommended for `_sys` backends |
+| Disk load | Simple; file read telemetry |
+
+See [mapping techniques](../mapping/techniques.md) for KnownDlls bootstrap.
+
+### 2. Configure strategy chain
+
+```c
+snd_syscall_strategy_set(snd_syscall_resolve_ssn_scan);   // primary
+snd_syscall_strategy_add(snd_syscall_resolve_ssn_sort);   // fallback
+```
+
+`snd_syscall_strategy_set` **replaces** the entire chain. Each `snd_syscall_strategy_add` appends up to 3 fallbacks (4 total).
+
+### 3. Resolve SSN
+
+```c
+snd_syscall_entry_t entry = {0};
+snd_status_t status = snd_syscall_resolve(SND_HASH_NTOPENSECTION, &entry);
+```
+
+`snd_syscall_resolve` tries each registered strategy in order until one returns `SND_OK`.
+
+### 4. Invoke
+
+Populate `snd_syscall_args_t` and call the ASM stub:
+
+```c
+snd_syscall_args_t args = {0};
+args.ssn  = entry.wSystemCall;
+args.arg1 = ...;
+// arg2–arg11 as required by the target syscall
+
+NTSTATUS nt_status = snd_syscall_invoke_asm(&args);
+```
+
+`_sys` primitive implementations (`snd_mem_sys`, `snd_proc_sys`, `snd_map_sys`) wrap steps 3–4 internally — operators only bootstrap once at startup.
+
+---
+
+## Full example
+
+```c
+// Bootstrap (once per process)
+PVOID ntdll = NULL;
+snd_status_t st = snd_om_knowndll_map(&snd_map_nt, L"ntdll.dll", &ntdll);
+if (SND_FAILED(st)) return st;
+
+snd_syscall_set_ntdll(ntdll);
+snd_syscall_strategy_set(snd_syscall_resolve_ssn_scan);
+snd_syscall_strategy_add(snd_syscall_resolve_ssn_sort);
+
+// Resolve + invoke NtClose
+snd_syscall_entry_t entry = {0};
+st = snd_syscall_resolve(SND_HASH_NTCLOSE, &entry);
+if (SND_FAILED(st)) return st;
+
+snd_syscall_args_t args = {0};
+args.ssn  = entry.wSystemCall;
+args.arg1 = handle;
+
+NTSTATUS nt = snd_syscall_invoke_asm(&args);
+```
+
+---
+
+## Integration with `_sys` backends
+
+After bootstrap, swapping to syscall-backed primitives requires no additional setup:
+
+```c
+ctx.mem_api  = &snd_mem_sys;
+inj_ctx.proc_api = &snd_proc_sys;
+```
+
+Each `_sys` API function calls `snd_syscall_resolve` with the appropriate hash, packs arguments into `snd_syscall_args_t`, and invokes `snd_syscall_invoke_asm`.
+
+---
+
+## Failure modes
+
+| Status | Cause |
+|---|---|
+| `SND_STATUS_NOT_INITIALIZED` | `snd_syscall_set_ntdll` not called, or no strategies registered |
+| `SND_STATUS_SSN_NOT_FOUND` | All strategies failed for the hash |
+| `SND_STATUS_BUFFER_TOO_SMALL` | Strategy chain full (max 4) |
+| `SND_STATUS_INVALID_PARAMETER` | NULL resolver passed to `strategy_add` |
+
+---
+
+## See also
+
+- [Resolver engines](engines.md) — scan vs sort internals
+- [API reference](api_reference.md)

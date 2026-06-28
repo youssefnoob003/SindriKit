@@ -1,7 +1,7 @@
 #include <sindri/common/hash.h>
-#include <sindri/common/helpers.h>
+#include <sindri/common/macros.h>
 #include <sindri_hashes.h>
-#include <windows.h>
+#include <stdint.h>
 
 /**
  * @def SND_HASH_SEED
@@ -23,10 +23,10 @@
 #endif
 #endif
 
-SND_FORCE_INLINE DWORD snd_hash_djb2_internal(const char *str) {
+SND_FORCE_INLINE uint32_t snd_hash_djb2_internal(const char *str) {
     if (!str)
         return 0;
-    DWORD hash = SND_HASH_SEED;
+    uint32_t hash = SND_HASH_SEED;
     while (*str) {
         hash = hash * 33 + (unsigned char)*str;
         str++;
@@ -34,10 +34,10 @@ SND_FORCE_INLINE DWORD snd_hash_djb2_internal(const char *str) {
     return hash;
 }
 
-SND_FORCE_INLINE DWORD snd_hash_fnv1a_internal(const char *str) {
+SND_FORCE_INLINE uint32_t snd_hash_fnv1a_internal(const char *str) {
     if (!str)
         return 0;
-    DWORD hash = SND_HASH_SEED;
+    uint32_t hash = SND_HASH_SEED;
     while (*str) {
         hash ^= (unsigned char)*str;
         hash *= 16777619U;
@@ -46,10 +46,10 @@ SND_FORCE_INLINE DWORD snd_hash_fnv1a_internal(const char *str) {
     return hash;
 }
 
-SND_FORCE_INLINE DWORD snd_hash_djb2_lower_internal(const char *str) {
+SND_FORCE_INLINE uint32_t snd_hash_djb2_lower_internal(const char *str) {
     if (!str)
         return 0;
-    DWORD hash = SND_HASH_SEED;
+    uint32_t hash = SND_HASH_SEED;
     while (*str) {
         char c = *str;
         if (c >= 'A' && c <= 'Z') {
@@ -61,10 +61,10 @@ SND_FORCE_INLINE DWORD snd_hash_djb2_lower_internal(const char *str) {
     return hash;
 }
 
-SND_FORCE_INLINE DWORD snd_hash_fnv1a_lower_internal(const char *str) {
+SND_FORCE_INLINE uint32_t snd_hash_fnv1a_lower_internal(const char *str) {
     if (!str)
         return 0;
-    DWORD hash = SND_HASH_SEED;
+    uint32_t hash = SND_HASH_SEED;
     while (*str) {
         char c = *str;
         if (c >= 'A' && c <= 'Z') {
@@ -77,10 +77,10 @@ SND_FORCE_INLINE DWORD snd_hash_fnv1a_lower_internal(const char *str) {
     return hash;
 }
 
-SND_FORCE_INLINE DWORD snd_hash_djb2_wide_lower_internal(const wchar_t *str) {
+SND_FORCE_INLINE uint32_t snd_hash_djb2_wide_lower_internal(const wchar_t *str) {
     if (!str)
         return 0;
-    DWORD hash = SND_HASH_SEED;
+    uint32_t hash = SND_HASH_SEED;
     while (*str) {
         wchar_t c = *str;
         if (c >= L'A' && c <= L'Z') {
@@ -92,10 +92,10 @@ SND_FORCE_INLINE DWORD snd_hash_djb2_wide_lower_internal(const wchar_t *str) {
     return hash;
 }
 
-SND_FORCE_INLINE DWORD snd_hash_fnv1a_wide_lower_internal(const wchar_t *str) {
+SND_FORCE_INLINE uint32_t snd_hash_fnv1a_wide_lower_internal(const wchar_t *str) {
     if (!str)
         return 0;
-    DWORD hash = SND_HASH_SEED;
+    uint32_t hash = SND_HASH_SEED;
     while (*str) {
         wchar_t c = *str;
         if (c >= L'A' && c <= L'Z') {
@@ -108,7 +108,7 @@ SND_FORCE_INLINE DWORD snd_hash_fnv1a_wide_lower_internal(const wchar_t *str) {
     return hash;
 }
 
-DWORD snd_hash(const char *str) {
+uint32_t snd_hash(const char *str) {
 #if defined(SND_HASH_FNV1A)
     return snd_hash_fnv1a_internal(str);
 #else
@@ -116,7 +116,7 @@ DWORD snd_hash(const char *str) {
 #endif
 }
 
-DWORD snd_hash_lower(const char *str) {
+uint32_t snd_hash_lower(const char *str) {
 #if defined(SND_HASH_FNV1A)
     return snd_hash_fnv1a_lower_internal(str);
 #else
@@ -124,7 +124,7 @@ DWORD snd_hash_lower(const char *str) {
 #endif
 }
 
-DWORD snd_hash_wide_lower(const wchar_t *str) {
+uint32_t snd_hash_wide_lower(const wchar_t *str) {
 #if defined(SND_HASH_FNV1A)
     return snd_hash_fnv1a_wide_lower_internal(str);
 #else

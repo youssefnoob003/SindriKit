@@ -1,7 +1,7 @@
 #ifndef SND_PRIMITIVES_HEAVENS_GATE_H
 #define SND_PRIMITIVES_HEAVENS_GATE_H
 
-#include <sindri/common/helpers.h>
+#include <sindri/common/macros.h>
 #include <sindri/common/status.h>
 #include <windows.h>
 

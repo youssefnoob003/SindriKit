@@ -1,17 +1,19 @@
 # Operational Domains
 
-This directory categorizes the actionable offensive capabilities of SindriKit into specialized functional areas.
+Actionable offensive capabilities grouped by function. Each domain is self-contained and interacts with others only through injected primitive interfaces — never through direct cross-domain imports.
 
 > [!IMPORTANT]
-> **Domain Independence**
-> Each domain must remain entirely self-contained. A loader cannot directly depend on an evasion module; they interact exclusively through the injected primitive interfaces.
+> **Domain independence:** A loader must not call injection internals directly. Use documented chain APIs and shared primitive tables.
 
 ## Table of Contents
-- [primitives/](primitives/)
-  The foundational extraction, memory, and resolution techniques that all other domains rely on.
-- [loaders/](loaders/)
-  Mechanisms for bootstrapping and executing code payloads entirely in memory (e.g., Reflective PE Loading).
-- [evasion/](evasion/)
-  *Placeholder:* Future domain for heuristic evasion, memory scanning bypasses, and sleep obfuscation.
-- [injection/](injection/)
-  *Placeholder:* Future domain for remote process targeting, thread hijacking, and payload injection.
+
+- [primitives/](primitives/) — DI backends: memory, modules, process, mapping, syscalls, execution
+- [loaders/](loaders/) — In-memory payload bootstrapping (reflective PE implemented)
+- [injection/](injection/) — Remote process injection (classic shell + PE implemented)
+- [evasion/](evasion/) — Planned: ETW/AMSI bypass, sleep obfuscation (stub)
+
+## Related documentation
+
+- [Architecture](../architecture/README.md)
+- [Examples](../examples/README.md)
+- [Getting started](../getting_started/README.md)

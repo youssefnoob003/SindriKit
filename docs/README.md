@@ -1,31 +1,36 @@
 # SindriKit Documentation
 
-This is the root of the SindriKit technical documentation tree. It is organized to mirror the framework's internal architecture: shared infrastructure at the base, architectural patterns above it, domain-specific techniques and API references at the leaves.
+Technical documentation mirroring the framework layout: shared infrastructure at the base, architectural patterns above it, domain techniques and API references at the leaves.
 
 ## Table of Contents
 
-### 1. Introduction & Onboarding
-- [**getting_started/**](getting_started/)
-  Onboarding guides for building SindriKit, configuring CMake, and running the first reflective loader.
-- [**examples/**](examples/)
-  Standalone PoC walkthroughs demonstrating the framework across three operational profiles.
+### Introduction & onboarding
+- [getting_started/](getting_started/) — CMake setup, DI bootstrap, first loader/injection workflow
+- [examples/](examples/) — PoC walkthroughs across Win32, NT, and syscall profiles
 
-### 2. The Core Framework
-- [**architecture/**](architecture/)
-  Core design patterns governing the framework: Dependency Injection, State Machines, the Status System, and Red Team integration guidance.
-- [**domains/**](domains/)
-  The actionable offensive capabilities: primitives, loaders, and planned future domains (evasion, injection).
+### Core framework
+- [architecture/](architecture/) — dependency injection, state machines, status tiers, implant integration
+- [domains/](domains/) — primitives, loaders, injection, evasion (stub)
 
-### 3. Internal Engines & Utilities
-- [**parsers/**](parsers/)
-  PE format parsing engines: header validation, export/import resolution, base relocations, and TLS callback execution.
-- [**common/**](common/)
-  Shared, domain-agnostic utilities: CRT-independent primitives, buffer bounds tracking, API hashing, disk I/O, and the debug output system.
+### Internal engines
+- [parsers/](parsers/) — PE parsing and env/PEB introspection
+- [common/](common/) — CRT-free helpers, buffers, hashing, status, debug
 
-### 4. Build System & Quality Assurance
-- [**config/**](config/)
-  Documentation for the declarative configuration files (hash manifests) consumed by the build system.
-- [**scripts/**](scripts/)
-  Documentation for the pre-build automation scripts that generate compile-time hash headers.
-- [**tests/**](tests/)
-  Documentation for the integration testing infrastructure: the data-driven test runner, PE mutation engine, and test payload fixtures.
+### Build & QA
+- [config/](config/) — hash manifest (`config/hashes.ini`)
+- [scripts/](scripts/) — pre-build automation (`generate_hashes.py`)
+- [tests/](tests/) — integration test runner, PE mutator, fixtures
+
+## Documentation conventions
+
+| Page type | Typical sections |
+|---|---|
+| **README** (folder index) | Intro → header/source map → Table of Contents → Related documentation |
+| **techniques.md** | Concepts, OpSec trade-offs, integration patterns |
+| **api_reference.md** | Signatures, parameters, returns, source paths |
+
+Syscalls use `pipeline.md` + `engines.md` instead of `techniques.md`. Execution splits FFI and Heaven's Gate into dedicated technique pages.
+
+## Related documentation
+
+Start here: [Getting started](getting_started/README.md) → [Basic usage](getting_started/basic_usage.md) → [Examples OpSec table](examples/README.md)

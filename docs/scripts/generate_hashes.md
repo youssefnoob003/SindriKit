@@ -2,7 +2,7 @@
 
 **Location:** `scripts/generate_hashes.py`
 
-This script is the core of SindriKit's compile-time API hashing pipeline. It is invoked automatically by the CMake build system before compilation begins. Its output is a generated C header (`include/generated/sindri_hashes.h`) containing `#define` macros for every API name and module name the framework needs to resolve at runtime.
+This script is the core of SindriKit's compile-time API hashing pipeline. CMake invokes it at configure time. Its output is **`sindri_hashes.h`** in the **build tree** (`${CMAKE_BINARY_DIR}/generated/sindri_hashes.h`), exposed to targets via `target_include_directories(... ${CMAKE_CURRENT_BINARY_DIR}/generated)`. Source includes it as `#include <sindri_hashes.h>`.
 
 ## Purpose
 

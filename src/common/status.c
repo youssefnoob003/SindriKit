@@ -1,3 +1,4 @@
+#include <sindri/common/debug.h>
 #include <sindri/common/status.h>
 
 const char *snd_status_to_string(snd_status_t status) {
@@ -7,14 +8,28 @@ const char *snd_status_to_string(snd_status_t status) {
         return "Operation completed successfully";
     case SND_ERROR_GENERIC:
         return "An unspecified error occurred";
-    case SND_STATUS_INVALID_PARAMETER:
-        return "Invalid function parameter";
+    case SND_STATUS_NULL_POINTER:
+        return "Null pointer provided";
     case SND_STATUS_INTEGER_OVERFLOW:
         return "Integer overflow";
     case SND_STATUS_UNSUPPORTED:
         return "Unsupported operation";
     case SND_STATUS_NOT_INITIALIZED:
-        return "A paramater is  not initialized.";
+        return "A paramater is not initialized";
+    case SND_STATUS_BUFFER_TOO_SMALL:
+        return "Buffer too small";
+
+    // Core Engine Execution Errors
+    case SND_STATUS_TOO_MANY_ARGUMENTS:
+        return "Too many arguments provided";
+    case SND_STATUS_NTDLL_NOT_INITIALIZED:
+        return "NTDLL base is not initialized";
+    case SND_STATUS_RESOLVER_NOT_INITIALIZED:
+        return "Syscall resolver pipeline is not configured";
+    case SND_STATUS_OM_NOT_INITIALIZED:
+        return "Object Manager (KnownDlls) not initialized";
+    case SND_STATUS_PIPELINE_EXHAUSTED:
+        return "Resolver pipeline is full";
 
     // Command-line argument errors
     case SND_STATUS_MISSING_COMMAND_LINE_ARGS:
@@ -67,6 +82,10 @@ const char *snd_status_to_string(snd_status_t status) {
         return "Invalid file offset";
     case SND_STATUS_DIRECTORY_NOT_FOUND:
         return "Directory not found";
+    case SND_STATUS_CORRUPTED_STATE:
+        return "State is corrupted";
+    case SND_STATUS_IMAGE_NOT_MAPPED:
+        return "Operation requires a mapped PE image";
 
     // Reflective loading errors
     case SND_STATUS_SECTION_COPY_FAILED:
@@ -99,21 +118,50 @@ const char *snd_status_to_string(snd_status_t status) {
         return "DLL payload requires an export name";
     case SND_STATUS_INVALID_STAGE_SEQUENCE:
         return "Invalid stage sequence while loading the PE";
-    case SND_STATUS_CORRUPTED_STATE:
-        return "State is corrupted";
     case SND_FAILED_TO_EXECUTE:
         return "Failed to execute the PE";
+    case SND_STATUS_LOCAL_EXECUTION_BLOCKED:
+        return "Cannot execute remote-configured image locally";
 
     // SSN related errors
     case SND_STATUS_SSN_NOT_FOUND:
         return "SSN not found";
-    case SND_STATUS_SSN_BUFFER_TOO_SMALL:
-        return "SSN buffer too small";
 
     // PEB related errors
     case SND_STATUS_PEB_MODULE_NOT_FOUND:
         return "PEB module not found";
+    case SND_STATUS_PEB_PROCESS_PARAMETERS_NOT_FOUND:
+        return "PEB process parameters not found";
 
+    // OS errors
+    case SND_STATUS_MODULE_NOT_FOUND:
+        return "Module not found";
+    case SND_STATUS_SECTION_OPEN_FAILED:
+        return "Section open failed";
+    case SND_STATUS_SECTION_MAP_FAILED:
+        return "Section map failed";
+    case SND_STATUS_HANDLE_CLOSE_FAILED:
+        return "Handle close failed";
+    case SND_STATUS_PROCESS_OPEN_FAILED:
+        return "Process open failed";
+    case SND_STATUS_VIRTUAL_ALLOC_FAILED:
+        return "Virtual alloc failed";
+    case SND_STATUS_VIRTUAL_WRITE_FAILED:
+        return "Virtual write failed";
+    case SND_STATUS_VIRTUAL_PROTECT_FAILED:
+        return "Virtual protect failed";
+    case SND_STATUS_THREAD_CREATE_FAILED:
+        return "Thread create failed";
+    case SND_STATUS_VIRTUAL_FREE_FAILED:
+        return "Virtual free failed";
+
+    // Remote process errors
+    case SND_STATUS_ACCESS_DENIED:
+        return "Access denied";
+    case SND_STATUS_INVALID_PAYLOAD:
+        return "Payload buffer is empty or structurally invalid";
+    case SND_STATUS_INVALID_INJECTION_TARGET:
+        return "Injection target PID or process handle is invalid";
     default:
         return "Unknown error code";
     }
@@ -127,7 +175,7 @@ void snd_status_print(snd_status_t status) {
 #if SND_DEBUG
     const char *description = snd_status_to_string(status);
 
-    if (status.code == SND_SUCCESS) {
+    if (SND_SUCCEEDED(status)) {
         SND_DEBUG_PRINT("[+] Success: %s\n", description);
     } else {
         SND_DEBUG_PRINT("[-] Error: %s\n", description);

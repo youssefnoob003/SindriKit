@@ -1,109 +1,165 @@
 # Syscalls: API Reference
 
-This page documents the public API surface for System Service Number (SSN) resolution and direct syscall execution. All definitions reside in `include/sindri/primitives/syscalls.h`.
+Public API in `include/sindri/primitives/syscalls.h`. Implementation: `src/primitives/execution/syscalls/`.
+
+---
+
+## Constants
+
+| Macro | Value | Description |
+|---|---|---|
+| `SND_MAX_SYSCALLS` | `500` | Max cached exports in sort resolver |
+| `SND_MAX_SYS_NAME_LEN` | `256` | Max normalized export name length |
+
+Internal pipeline depth: **4 strategies** (`SND_MAX_INTERNAL_STRATEGIES` in `syscalls.c`).
 
 ---
 
 ## Core Data Structures
 
 ### `snd_syscall_entry_t`
-Structure holding the successfully resolved context of a target syscall.
 
 | Field | Type | Description |
 |---|---|---|
-| `pAddress` | `PVOID` | Pointer to the original stub address in memory |
-| `dwHash` | `DWORD` | The compile-time hash of the target NT function |
-| `wSystemCall` | `WORD` | The resolved System Service Number (SSN) |
-
-### `snd_syscall_args_t`
-Arguments structure passed to the generic ASM syscall invoker.
-
-| Field | Type | Description |
-|---|---|---|
-| `ssn` | `WORD` | System Service Number to place in the `EAX`/`RAX` register |
-| `arg1`–`arg10` | `PVOID` | Up to 10 arguments forwarded to the kernel |
-
----
-
-## Resolvers & Pipeline Configuration
-
-### `snd_syscall_resolver_t`
-Function pointer signature for SSN resolution strategies. Any custom gate can be plugged into the framework if it matches this signature.
-
-```c
-typedef snd_status_t (*snd_syscall_resolver_t)(PVOID ntdll_base, DWORD func_hash, snd_syscall_entry_t *entry_out);
-```
-
-#### Built-in Resolvers
-- `snd_hell_extract_syscall`: Standard Hell's Gate
-- `snd_halo_extract_syscall`: Standard Halo's Gate (`0xE9` hook evasion)
-- `snd_tartarus_extract_syscall`: Tartarus' Gate (`0xEB` hook evasion)
-- `snd_veles_extract_syscall`: VelesReek (`syscall` instruction anchor)
-
----
-
-### `snd_set_syscall_strategy`
-Sets the primary resolution strategy and **resets** the entire fallback chain to a single entry.
-
-| Parameter | Type | Description |
-|---|---|---|
-| `resolver` | `snd_syscall_resolver_t` | The resolver function to use as the primary strategy |
-
----
-
-### `snd_add_syscall_strategy`
-Appends a fallback strategy to the resolution pipeline. The pipeline is evaluated in registration order. Maximum depth: 4 strategies.
-
-| Parameter | Type | Description |
-|---|---|---|
-| `resolver` | `snd_syscall_resolver_t` | The fallback resolver function to append |
-
-**Returns:** `snd_status_t` — `SND_OK` on success, `SND_STATUS_SSN_BUFFER_TOO_SMALL` if the chain is full.
-
----
-
-### NTDLL Base Address
+| `pAddress` | `PVOID` | Stub address (populated by scan resolver) |
+| `dwHash` | `DWORD` | Target function hash |
+| `wSystemCall` | `WORD` | Resolved SSN |
 
 > [!NOTE]
-> The `ntdll.dll` base address is managed globally via `snd_set_ntdll` and `snd_get_ntdll`. You MUST set the global base before attempting to resolve syscalls.
+> The sort resolver sets `wSystemCall` only. `_sys` backends use `entry.wSystemCall` for invocation.
+
+### `snd_syscall_args_t`
+
+Arguments for `snd_syscall_invoke_asm`. On x64, `arg1` is moved to `R10` per the syscall convention; `arg2`–`arg4` use `RDX`/`R8`/`R9`; `arg5`–`arg11` are stack arguments.
+
+| Field | Type | Description |
+|---|---|---|
+| `ssn` | `WORD` | SSN placed in `EAX`/`RAX` |
+| `arg1`–`arg11` | `PVOID` | Syscall arguments |
 
 ---
 
-## Execution
+## Pipeline Configuration
 
-### `snd_resolve_syscall`
-Attempts to resolve a System Service Number (SSN) by running the configured strategy pipeline in order. Returns on the first successful result.
+### `snd_syscall_resolver_t`
 
-| Parameter | Type | Description |
-|---|---|---|
-| `func_hash` | `DWORD` | Compile-time hash of the target NT function name |
-| `entry_out` | `snd_syscall_entry_t*` | Output structure populated with the resolved SSN and stub address |
+```c
+typedef snd_status_t (*snd_syscall_resolver_t)(
+    PVOID ntdll_base,
+    DWORD func_hash,
+    snd_syscall_entry_t *entry_out
+);
+```
 
-**Returns:** `snd_status_t` — `SND_OK` on success, `SND_STATUS_SSN_NOT_FOUND` if all strategies fail, `SND_STATUS_NOT_INITIALIZED` if `snd_set_ntdll` was not called.
+### `snd_syscall_strategy_set`
 
----
+Sets the **primary** strategy and **resets** the chain to a single entry.
 
-### `snd_invoke_syscall_asm`
-ASM stub that performs the actual `syscall` instruction. Architecture-specific implementations exist for x64 and x86.
-
-| Parameter | Type | Description |
-|---|---|---|
-| `args` | `snd_syscall_args_t*` | Pointer to a populated arguments structure |
-
-**Returns:** `NTSTATUS` — the raw kernel return value.
-
-### `snd_set_ntdll`
-Sets the global `ntdll.dll` base address.
-
-| Parameter | Type | Description |
-|---|---|---|
-| `base` | `PVOID` | The base address of the `ntdll.dll` image |
+```c
+void snd_syscall_strategy_set(snd_syscall_resolver_t resolver);
+```
 
 **Returns:** `void`
 
 ---
 
-### `snd_get_ntdll`
-Returns the global `ntdll.dll` base address.
+### `snd_syscall_strategy_add`
 
-**Returns:** `PVOID` — the base address of the `ntdll.dll` image, or `NULL` if not set.
+Appends a fallback strategy. Evaluated in registration order after the primary.
+
+```c
+snd_status_t snd_syscall_strategy_add(snd_syscall_resolver_t resolver);
+```
+
+**Returns:** `SND_OK`, `SND_STATUS_INVALID_PARAMETER`, `SND_STATUS_BUFFER_TOO_SMALL` (chain full)
+
+---
+
+### `snd_syscall_set_ntdll`
+
+Registers the global `ntdll` base used by `snd_syscall_resolve`.
+
+```c
+void snd_syscall_set_ntdll(PVOID ntdll_base);
+```
+
+No-op if `ntdll_base` is NULL. Typical sources: KnownDlls map, PEB walk, disk buffer.
+
+**Source:** `src/primitives/execution/syscalls/syscalls.c`
+
+---
+
+## Built-in Resolvers
+
+### `snd_syscall_resolve_ssn_scan`
+
+Stub-byte SSN extraction with neighbor fallback. See [engines.md](engines.md).
+
+```c
+snd_status_t snd_syscall_resolve_ssn_scan(
+    PVOID ntdll_base, DWORD func_hash, snd_syscall_entry_t *entry_out);
+```
+
+**Source:** `src/primitives/execution/syscalls/syscalls_scan.c`
+
+---
+
+### `snd_syscall_resolve_ssn_sort`
+
+EAT sort-table SSN derivation. See [engines.md](engines.md).
+
+```c
+snd_status_t snd_syscall_resolve_ssn_sort(
+    PVOID ntdll_base, DWORD func_hash, snd_syscall_entry_t *entry_out);
+```
+
+**Source:** `src/primitives/execution/syscalls/syscalls_sort.c`
+
+---
+
+## Resolution & Execution
+
+### `snd_syscall_resolve`
+
+Walks the configured strategy chain; returns on first success.
+
+```c
+snd_status_t snd_syscall_resolve(DWORD func_hash, snd_syscall_entry_t *entry_out);
+```
+
+**Returns:** `SND_OK`, `SND_STATUS_NOT_INITIALIZED` (no ntdll base or empty chain), `SND_STATUS_SSN_NOT_FOUND` (all strategies failed), `SND_STATUS_INVALID_PARAMETER`
+
+---
+
+### `snd_syscall_invoke_asm`
+
+Architecture-specific ASM stub (`invoke_x64.asm` / `invoke_x86.asm`).
+
+```c
+extern NTSTATUS snd_syscall_invoke_asm(snd_syscall_args_t *args);
+```
+
+**Returns:** raw `NTSTATUS` from the kernel
+
+---
+
+## Typical bootstrap (PoC pattern)
+
+```c
+PVOID ntdll = NULL;
+snd_om_knowndll_map(&snd_map_nt, L"ntdll.dll", &ntdll);
+snd_syscall_set_ntdll(ntdll);
+snd_syscall_strategy_set(snd_syscall_resolve_ssn_scan);
+snd_syscall_strategy_add(snd_syscall_resolve_ssn_sort);
+
+snd_syscall_entry_t entry = {0};
+snd_status_t status = snd_syscall_resolve(SND_HASH_NTALLOCATEVIRTUALMEMORY, &entry);
+```
+
+---
+
+## Related documentation
+
+- [Pipeline lifecycle](pipeline.md)
+- [Memory `_sys` backend](../memory/techniques.md)
+- [Mapping `_sys` backend](../mapping/techniques.md)

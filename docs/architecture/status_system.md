@@ -1,48 +1,129 @@
 # The Status System
 
-SindriKit utilizes a universal status reporting mechanism built around the `snd_status_t` structure. Traditional C error handling (returning raw integers or `NULL` pointers) is often insufficient for complex offensive tooling, as it fails to capture critical contextual information (such as the underlying OS error code) when a failure occurs deep within an operation. 
+SindriKit uses a universal **`snd_status_t`** return type instead of bare integers or NULL checks. Failures carry a framework error code and the underlying OS error (Win32 or NTSTATUS) in a single struct.
 
-The SindriKit status system is designed to provide maximum verbosity during development while guaranteeing absolute zero-footprint string literal emissions during production deployments.
+**Header:** `include/sindri/common/status.h`  
+**Implementation:** `src/common/status.c`
 
-## The `snd_status_t` Structure
+---
 
-Every function in the framework that can fail returns a `snd_status_t` object (defined in `include/sindri/common/status.h`).
+## The `snd_status_t` structure
 
-The structure tracks the following:
-1. `code`: A unified `snd_status_code_t` enumeration detailing the exact framework-level error (e.g., `SND_STATUS_NT_HEADERS_TRUNCATED`, `SND_STATUS_SSN_NOT_FOUND`).
-2. `os_error`: The native OS error code captured at the moment of failure (via `GetLastError()` or an NTSTATUS value).
+### Always present
 
-## Development vs. Production Tiers (OpSec)
+| Field | Type | Purpose |
+|---|---|---|
+| `code` | `snd_status_code_t` | Framework-level result (success or domain-specific failure) |
+| `os_error` | `int` | `GetLastError()` or NTSTATUS captured at failure site |
 
-The true power of the status system lies in how it interacts with the `SND_DEBUG` preprocessor macro (controlled via the `SND_ENABLE_DEBUG` CMake variable).
+### DEBUG tier only (`SND_DEBUG=1`)
 
-### Debug Tier (`SND_DEBUG=1`)
-During development, the `snd_status_t` structure expands to include heavily detailed telemetry:
-- `file`: The C source file where the error occurred (`__FILE__`).
-- `line`: The exact line number (`__LINE__`).
-- `context`: A dynamically formatted string buffer (up to 128 chars) providing hyper-specific details (e.g., "Failed to resolve API hash 0xDEADBEEF").
+| Field | Purpose |
+|---|---|
+| `file` | `__FILE__` of failing macro |
+| `line` | `__LINE__` |
+| `context` | `char[SND_MAX_CTX_LEN]` — formatted detail (128 bytes incl. NUL) |
 
-This allows operators to pinpoint exactly why an evasion primitive or loader sequence failed without relying on external debuggers.
+When `SND_ENABLE_DEBUG=OFF`, the struct shrinks to `{ code, os_error }` only. String formatting arguments to error macros are compiled out.
 
-### Silent Tier (`SND_DEBUG=0`)
+---
+
+## DEBUG vs SILENT tiers
+
+Controlled by CMake **`SND_ENABLE_DEBUG`** → preprocessor **`SND_DEBUG`**.
+
+| Tier | CMake | Struct size | String literals in `.rdata` |
+|---|---|---|---|
+| DEBUG | `SND_ENABLE_DEBUG=ON` | Full | File paths, stage names, `SND_ERR_CTX` format strings |
+| SILENT | `SND_ENABLE_DEBUG=OFF` | Minimal | Stripped — production implants only |
+
 > [!CAUTION]
-> When compiling for an operation, emitting plaintext string literals (like file paths or error contexts) into the payload's `.rdata` section creates massive, easily signatureable IOCs.
+> Plaintext error strings in release binaries are signature surface. Production artifacts must use the SILENT tier.
 
-When `SND_ENABLE_DEBUG` is disabled, the status macros dynamically shrink the `snd_status_t` struct:
-- The `file`, `line`, and `context` fields are completely excised from the struct definition.
-- The `SND_ERR_CTX` macro ignores all string formatting arguments.
-- The compiled output is reduced to pure integer assignments (just `code` and `os_error`).
+`SND_USE_PRINTF=ON` (requires DEBUG) routes diagnostics to `stdout` instead of `OutputDebugStringA` and pulls in CRT I/O.
 
-This achieves a completely silent, stringless release build without forcing the operator to manually strip out error handling code.
+---
 
-## Helper Macros
+## Helper macros
 
-Developers interact with the status system using a suite of context-aware macros:
+| Macro | Behavior |
+|---|---|
+| `SND_OK` | Success (`code == SND_SUCCESS`) |
+| `SND_SUCCEEDED(x)` / `SND_FAILED(x)` | Test `x.code` |
+| `SND_ERR(code)` | Framework error, `os_error = 0` |
+| `SND_ERR_CTX(code, fmt, …)` | Error + formatted context (DEBUG only) |
+| `SND_ERR_W32(code)` | Error + `GetLastError()` |
+| `SND_ERR_W32_CTX(code, fmt, …)` | W32 + context |
+| `SND_ERR_NT(code, nt_status)` | Error + NTSTATUS |
+| `SND_ERR_NT_CTX(code, nt_status, fmt, …)` | NT + context |
 
-- `SND_OK`: Returns a successful status.
-- `SND_ERR(code)`: Returns a generic framework error.
-- `SND_ERR_W32(code)`: Returns a framework error and automatically captures `GetLastError()`.
-- `SND_ERR_CTX(code, fmt, ...)`: Returns an error with a custom `printf`-style formatted string (which is automatically stripped in Silent builds).
-- `SND_ERR_W32_CTX(code, fmt, ...)`: Combines OS error capturing with custom string context.
+Release builds map `SND_ERR_CTX` / `SND_ERR_W32_CTX` / `SND_ERR_NT_CTX` to the non-context variants — format arguments are not evaluated for side effects in a way that emits strings, but callers should not rely on context formatting in SILENT.
 
-By strictly adhering to this pattern, all toolkit domains inherit both robust diagnostics and guaranteed operational security.
+---
+
+## Human-readable output
+
+| Function | DEBUG | SILENT |
+|---|---|---|
+| `snd_status_to_string(status)` | Description of `code` | Empty string |
+| `snd_status_print(status)` | Prints code, context, os_error, file/line | No-op body |
+
+PoCs and development builds use `snd_status_print` on failure paths:
+
+```c
+snd_status_t status = snd_ldr_pe_prepare_image(&ctx);
+if (SND_FAILED(status)) {
+    snd_status_print(status);
+    return status.code;
+}
+```
+
+---
+
+## Status code ranges
+
+Selected groupings from `snd_status_code_t`:
+
+| Range | Domain | Examples |
+|---|---|---|
+| `0` | Success | `SND_SUCCESS` |
+| Negative small ints | Generic | `SND_STATUS_INVALID_PARAMETER`, `SND_STATUS_BUFFER_TOO_SMALL` |
+| `0x100` | CLI | `SND_STATUS_MISSING_COMMAND_LINE_ARGS` |
+| `0x200` | File I/O | `SND_STATUS_FILE_READ_FAILED`, `SND_STATUS_ALLOC_FAILED` |
+| `0x300` | PE parsing | `SND_STATUS_INVALID_NT_SIGNATURE`, `SND_STATUS_ARCH_MISMATCH` |
+| `0x400` | Reflective load | `SND_STATUS_IMPORT_SYMBOL_RESOLVE_FAILED`, `SND_STATUS_INVALID_STAGE_SEQUENCE` |
+| `0x500` | Syscalls | `SND_STATUS_SSN_NOT_FOUND` |
+| `0x600` | PEB / env | `SND_STATUS_PEB_MODULE_NOT_FOUND` |
+| `0x800` | OS / mapping | `SND_STATUS_VIRTUAL_ALLOC_FAILED`, `SND_STATUS_SECTION_MAP_FAILED` |
+| `0x900` | Remote / access | `SND_STATUS_ACCESS_DENIED` |
+
+Full enum: `include/sindri/common/status.h`.  
+Per-domain references: [Common API](../common/api_reference.md#status-sindricommonstatush).
+
+---
+
+## Conventions for domain code
+
+1. **Return `snd_status_t`** from any function that can fail meaningfully.
+2. **Propagate** upstream — do not swallow `os_error`; use `SND_ERR_W32` / `SND_ERR_NT` at the failure boundary.
+3. **Use `SND_ERR_CTX`** for stage mismatches and resolver failures (stripped in SILENT).
+4. **Do not** `printf` errors directly — use `SND_DEBUG_PRINT` or `snd_status_print`.
+5. **Callers** test with `SND_FAILED(status)`, not `status.code != 0` alone (future-proof if success codes expand).
+
+---
+
+## Interaction with CRT-less builds
+
+`SND_CRTLESS=ON` force-disables DEBUG and `SND_USE_PRINTF` because status context formatting requires `<stdio.h>` / `vsnprintf`.
+
+CRT-less implants still receive `{ code, os_error }` from every API — only diagnostic strings disappear.
+
+See [Building: CRT independence](../getting_started/building.md).
+
+---
+
+## Related documentation
+
+- [Common infrastructure](../common/infrastructure.md)
+- [State machines](state_machines.md) — stage sequence errors
+- [Getting started](../getting_started/basic_usage.md) — status handling in PoCs

@@ -1,10 +1,11 @@
 #ifndef SND_PARSERS_PE_H
 #define SND_PARSERS_PE_H
 
-#include <sindri/parsers/pe/pe_exports.h>
-#include <sindri/parsers/pe/pe_imports.h>
-#include <sindri/parsers/pe/pe_parser.h>
-#include <sindri/parsers/pe/pe_relocations.h>
-#include <sindri/parsers/pe/pe_utils.h>
+#include <sindri/parsers/pe/exports.h>
+#include <sindri/parsers/pe/imports.h>
+#include <sindri/parsers/pe/parser.h>
+#include <sindri/parsers/pe/relocations.h>
+#include <sindri/parsers/pe/section_utils.h>
+#include <sindri/parsers/pe/utils.h>
 
-#endif
+#endif // SND_PARSERS_PE_H

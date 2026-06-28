@@ -2,32 +2,33 @@
 
 **Location:** `pocs/heavens_gate/`
 
-This PoC demonstrates SindriKit's capability to transition from a 32-bit WoW64 environment into native 64-bit mode using the `0x33` segment selector (Heaven's Gate).
+Demonstrates transitioning from a 32-bit WoW64 process into native 64-bit execution using the `0x33` segment selector (Heaven's Gate). Executes 64-bit shellcode and retrieves the 64-bit return value in `RAX`.
 
 ## What it demonstrates
 
-- Checking whether the current process is running under WoW64.
-- Passing a 64-bit function pointer and argument array across the boundary.
-- Executing 64-bit shellcode from a 32-bit process and retrieving a 64-bit return value in `RAX`.
+- WoW64 environment detection (`snd_is_wow64`)
+- 64-bit execution from a 32-bit host via `snd_hg_execute_64`
+- Native x64 compile rejection at runtime
 
 ## Walkthrough
 
-Because this primitive relies on the WoW64 subsystem, the PoC is only functional when compiled as a 32-bit executable (`x86`) and run on a 64-bit Windows OS.
+### 1. Validate environment
 
-### Step 1: Validate the Environment
+Requires **x86 build** on a **64-bit Windows** host under WoW64:
 
 ```c
-if (!snd_is_wow64()) {
-    printf("[-] Not running in WOW64... Heaven's Gate requires WOW64.\n");
+#if defined(_WIN64)
     return SND_STATUS_ARCH_MISMATCH;
-}
+#elif defined(_WIN32)
+    if (!snd_is_wow64()) {
+        return SND_STATUS_ARCH_MISMATCH;
+    }
+#endif
 ```
 
-The framework parses the PEB to determine if the 32-bit process is being emulated by the 64-bit OS.
+### 2. Allocate 64-bit shellcode
 
-### Step 2: Allocate 64-bit Payload
-
-For demonstration purposes, this PoC uses `VirtualAlloc` to allocate a simple 64-bit shellcode block that loads a magic value into `RAX` and returns:
+Demo shellcode loads a magic value into `RAX` and returns:
 
 ```nasm
 mov rax, 0x1122334455667788
@@ -36,28 +37,50 @@ ret
 
 ```c
 unsigned char shellcode64[] = {
-    0x48, 0xB8, 0x88, 0x77, 0x66,
-    0x55, 0x44, 0x33, 0x22, 0x11, 
-    0xC3                          
+    0x48, 0xB8, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11,
+    0xC3
 };
 
-PVOID pExec = VirtualAlloc(NULL, sizeof(shellcode64), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+PVOID pExec = VirtualAlloc(NULL, sizeof(shellcode64),
+                             MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
 memcpy(pExec, shellcode64, sizeof(shellcode64));
 ```
 
-### Step 3: Transition and Execute
+> [!NOTE]
+> Win32 allocation for demo simplicity. Production use would use `snd_mem_*` backends.
 
-The PoC invokes the `snd_hg_execute_64` API, which performs the segment selector transition internally, executes the provided address, and passes back the 64-bit return value.
+### 3. Execute via Heaven's Gate
 
 ```c
-UINT64 result = 0;
-
-// Invoke Heaven's Gate with 0 arguments
-snd_status_t status = snd_hg_execute_64((UINT64)(ULONG_PTR)pExec, 0, NULL, &result);
-
-if (status.code == SND_SUCCESS) {
-    // result == 0x1122334455667788
-}
+UINT64       result = 0;
+snd_status_t status = snd_hg_execute_64(
+    (UINT64)(ULONG_PTR)pExec,
+    0, NULL, &result
+);
+// result == 0x1122334455667788 on success
 ```
 
-**OpSec impact:** Bypassing WoW64 completely blinds any security products that have only placed userland hooks inside the 32-bit `ntdll.dll`. The execution happens entirely in native 64-bit mode.
+> [!NOTE]
+> The PoC prints failure messages but **`main` returns `SND_SUCCESS` (0)** on the WoW64 path regardless of `snd_hg_execute_64` outcome. Use debug output or patch `main` for status-driven exit codes.
+
+## Building
+
+Requires an **x86** toolchain target:
+
+```bash
+cmake -B build -A Win32 -DSND_BUILD_PAYLOADS=ON
+cmake --build build --config Release
+```
+
+Output: `build/pocs/heavens_gate/Release/heavens_gate.exe`
+
+Excluded when `SND_CRTLESS=ON` (only `loader_noCRT_nowinapi` builds).
+
+## OpSec impact
+
+Bypasses 32-bit userland hooks during the transition. The PoC uses visible `VirtualAlloc` for the demo shellcode buffer.
+
+## See also
+
+- [Heaven's Gate API](../domains/primitives/execution/heavens_gate.md)
+- [Execution domain](../domains/primitives/execution/README.md)

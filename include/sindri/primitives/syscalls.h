@@ -1,13 +1,15 @@
 #ifndef SND_PRIMITIVES_SYSCALLS_COMMON_H
 #define SND_PRIMITIVES_SYSCALLS_COMMON_H
 
-#include <sindri/common/helpers.h>
+#include <sindri/common/macros.h>
 #include <sindri/common/status.h>
-#include <sindri/internal/nt_defs.h>
 #include <sindri/primitives/os_api.h>
 #include <windows.h>
 
 SND_BEGIN_EXTERN_C
+
+#define SND_MAX_SYSCALLS     500
+#define SND_MAX_SYS_NAME_LEN 256
 
 /**
  * @brief Syscall entry structure holding the address, hash, and syscall number.
@@ -33,6 +35,7 @@ typedef struct {
     PVOID arg8;
     PVOID arg9;
     PVOID arg10;
+    PVOID arg11;
 } snd_syscall_args_t;
 
 /**
@@ -41,35 +44,27 @@ typedef struct {
  */
 typedef snd_status_t (*snd_syscall_resolver_t)(PVOID ntdll_base, DWORD func_hash, snd_syscall_entry_t *entry_out);
 
-snd_status_t snd_hell_extract_syscall(PVOID ntdll_base, DWORD func_hash, snd_syscall_entry_t *entry_out);
-snd_status_t snd_halo_extract_syscall(PVOID ntdll_base, DWORD func_hash, snd_syscall_entry_t *entry_out);
-snd_status_t snd_tartarus_extract_syscall(PVOID ntdll_base, DWORD func_hash, snd_syscall_entry_t *entry_out);
-snd_status_t snd_veles_extract_syscall(PVOID ntdll_base, DWORD func_hash, snd_syscall_entry_t *entry_out);
+snd_status_t snd_syscall_resolve_ssn_scan(PVOID ntdll, DWORD func_hash, snd_syscall_entry_t *entry_out);
+snd_status_t snd_syscall_resolve_ssn_sort(PVOID ntdll, DWORD func_hash, snd_syscall_entry_t *entry_out);
 
 /**
  * @brief Sets the primary syscall resolution strategy using a function pointer.
  * @param resolver The resolver function to use as the primary strategy.
  */
-void snd_set_syscall_strategy(snd_syscall_resolver_t resolver);
+void snd_syscall_strategy_set(snd_syscall_resolver_t resolver);
 
 /**
  * @brief Adds a fallback syscall resolution strategy to the pipeline.
  * @param resolver The fallback resolver function to add.
  * @return SND_OK on success, or an error if the pipeline is full.
  */
-snd_status_t snd_add_syscall_strategy(snd_syscall_resolver_t resolver);
+snd_status_t snd_syscall_strategy_add(snd_syscall_resolver_t resolver);
 
 /**
  * @brief Sets the global base address of the ntdll.dll module.
  * @param ntdll_base The base address of the ntdll module.
  */
-void snd_set_ntdll(PVOID ntdll_base);
-
-/**
- * @brief Retrieves the global base address of the ntdll.dll module.
- * @return The base address of the ntdll module, or NULL if not set.
- */
-PVOID snd_get_ntdll(void);
+void snd_syscall_set_ntdll(PVOID ntdll_base);
 
 /**
  * @brief Core resolution entrypoint (evaluates the internal fallback chain
@@ -79,14 +74,14 @@ PVOID snd_get_ntdll(void);
  * @param entry_out Pointer to the entry structure to populate.
  * @return SND_OK on success, or an error code if resolution fails.
  */
-snd_status_t snd_resolve_syscall(DWORD func_hash, snd_syscall_entry_t *entry_out);
+snd_status_t snd_syscall_resolve(DWORD func_hash, snd_syscall_entry_t *entry_out);
 
 /**
  * @brief ASM stub for invoking syscalls.
  * @param args Pointer to the syscall arguments structure.
  * @return The NTSTATUS returned by the syscall.
  */
-extern NTSTATUS snd_invoke_syscall_asm(snd_syscall_args_t *args);
+extern NTSTATUS snd_syscall_invoke_asm(snd_syscall_args_t *args);
 
 SND_END_EXTERN_C
 

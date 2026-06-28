@@ -1,3 +1,5 @@
+#include "sindri/primitives/syscalls.h"
+
 #include <sindri.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -107,68 +109,56 @@ int main(int argc, char *argv[]) {
     snd_status_t status = SND_OK;
 
     snd_buffer_t     file_buf = {0};
-    snd_loader_ctx_t ctx      = {0};
+    snd_ldr_pe_ctx_t ctx      = {0};
 
     PVOID ntdll;
 
     // First Method: Disk Loading
-    /*
-    snd_buffer_t     ntdll_buf = {0};
-    snd_loader_ctx_t ntdll_ctx = {0};
 
-    status = snd_buffer_load_from_disk("C:\\Windows\\System32\\ntdll.dll",
-    &ntdll_buf); if (status.code != SND_SUCCESS) { goto cleanup;
-    }
+    snd_buffer_t ntdll_buf = {0};
 
-    ntdll_ctx.mem_api = &snd_mem_win;
-    ntdll_ctx.mod_api = &snd_mod_win;
-
-    ntdll_ctx.raw_source = &ntdll_buf;
-
-    status = snd_pe_parse(ntdll_ctx.raw_source, FALSE, &ntdll_ctx.pe);
-    if (status.code != SND_SUCCESS) {
+    status = snd_disk_buffer_load("C:\\Windows\\System32\\ntdll.dll", &ntdll_buf);
+    if (SND_FAILED(status)) {
         goto cleanup;
     }
 
-    ntdll_ctx.stage = SND_STAGE_PARSED;
-
-    status = snd_allocate_and_copy_image(&ntdll_ctx);
-    if (status.code != SND_SUCCESS) {
-      goto cleanup;
-    }
-
-    ntdll = ntdll_ctx.target.virtual_base;
-    */
+    ntdll = ntdll_buf.data;
 
     // Second Method: PEB Walking
-    // status = snd_peb_get_module_base_by_hash(SND_HASH_NTDLL_DLL, &ntdll);
-
-    // Third Method: Known DLL Mapping
-    status = snd_map_knowndll(&snd_knowndlls_win, L"ntdll.dll", &ntdll);
-    if (status.code != SND_SUCCESS) {
+    /*
+    status = snd_peb_get_module_base(SND_HASH_NTDLL_DLL, &ntdll);
+    if (SND_FAILED(status)) {
         goto cleanup;
     }
-    snd_set_ntdll(ntdll);
+    */
+
+    // Third Method: Known DLL Mapping
+    /*
+    status = snd_om_knowndll_map(&snd_map_nt, L"ntdll.dll", &ntdll);
+    if (SND_FAILED(status)) {
+        goto cleanup;
+    }
+    */
+
+    snd_syscall_set_ntdll(ntdll);
 
     /* Configure the cascading syscall resolution strategy. */
-    snd_set_syscall_strategy(snd_hell_extract_syscall);
-    snd_add_syscall_strategy(snd_halo_extract_syscall);
-    snd_add_syscall_strategy(snd_veles_extract_syscall);
-    snd_add_syscall_strategy(snd_tartarus_extract_syscall);
+    snd_syscall_strategy_set(snd_syscall_resolve_ssn_scan);
+    snd_syscall_strategy_add(snd_syscall_resolve_ssn_sort);
 
-    ctx.mem_api = &snd_mem_native;
-    ctx.mod_api = &snd_mod_native;
+    ctx.mem_api = &snd_mem_nt;
+    ctx.mod_api = &snd_mod_nt;
 
     printf("[+] Loading payload into memory: %s\n", file_path);
-    status = snd_buffer_load_from_disk(file_path, &file_buf);
-    if (status.code != SND_SUCCESS) {
+    status = snd_disk_buffer_load(file_path, &file_buf);
+    if (SND_FAILED(status)) {
         goto cleanup;
     }
 
     ctx.raw_source = &file_buf;
 
-    status = snd_prepare_reflective_image(&ctx);
-    if (status.code != SND_SUCCESS) {
+    status = snd_ldr_pe_prepare_image(&ctx);
+    if (SND_FAILED(status)) {
         goto cleanup;
     }
 
@@ -178,8 +168,8 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
 
-    status = snd_execute_reflective_image(&ctx);
-    if (status.code != SND_SUCCESS) {
+    status = snd_ldr_pe_execute_image(&ctx);
+    if (SND_FAILED(status)) {
         goto cleanup;
     }
 
@@ -195,8 +185,8 @@ int main(int argc, char *argv[]) {
          * never triggered.
          * ------------------------------------------------------------------ */
         FARPROC dynamic_proc = NULL;
-        status               = snd_get_proc_address(&ctx, export_name, &dynamic_proc);
-        if (status.code != SND_SUCCESS) {
+        status               = snd_ldr_pe_get_proc_address(&ctx, export_name, &dynamic_proc);
+        if (SND_FAILED(status)) {
             goto cleanup;
         }
 
@@ -204,7 +194,7 @@ int main(int argc, char *argv[]) {
                (unsigned long)call_argc);
 
         PVOID    fn_ptr = (PVOID)(UINT_PTR)dynamic_proc;
-        UINT_PTR retval = snd_execute_dynamic(fn_ptr, call_argc, call_argc > 0 ? call_args : NULL);
+        UINT_PTR retval = snd_ffi_execute(fn_ptr, call_argc, call_argc > 0 ? call_args : NULL);
 
         printf("[+] Export returned: 0x%p\n", (void *)retval);
     }
@@ -212,11 +202,11 @@ int main(int argc, char *argv[]) {
     printf("\n[+] Payload execution completed successfully.\n");
 
 cleanup:
-    snd_detach_reflective_image(&ctx);
-    snd_free_mapped_image(&ctx);
+    snd_ldr_pe_detach_image(&ctx);
+    snd_ldr_pe_free_mapped_image(&ctx);
     snd_buffer_free(&file_buf);
 
-    if (status.code != SND_SUCCESS) {
+    if (SND_FAILED(status)) {
         snd_status_print(status);
         return status.code;
     }

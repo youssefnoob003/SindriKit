@@ -1,27 +1,35 @@
 #ifndef SND_COMMON_STATUS_H
 #define SND_COMMON_STATUS_H
 
-#include <windows.h>
-
 #if SND_DEBUG
 #include <stdarg.h>
 #include <stdio.h>
 #endif
 
-#include <sindri/common/helpers.h>
+#include <sindri/common/macros.h>
 
 SND_BEGIN_EXTERN_C
 
 // Maximum length for error context strings (including null terminator)
-#define SND_MAX_CTX_LEN 128
+#define SND_MAX_CTX_LEN  128
+#define SND_FAILED(x)    (x.code != SND_SUCCESS)
+#define SND_SUCCEEDED(x) (x.code == SND_SUCCESS)
 
 typedef enum _SND_STATUS_CODE {
-    SND_SUCCESS                  = 0,
-    SND_ERROR_GENERIC            = -1,
-    SND_STATUS_INVALID_PARAMETER = -2,
-    SND_STATUS_INTEGER_OVERFLOW  = -3,
-    SND_STATUS_UNSUPPORTED       = -4,
-    SND_STATUS_NOT_INITIALIZED   = -5,
+    SND_SUCCESS                 = 0,
+    SND_ERROR_GENERIC           = -1,
+    SND_STATUS_NULL_POINTER     = -2,
+    SND_STATUS_INTEGER_OVERFLOW = -3,
+    SND_STATUS_UNSUPPORTED      = -4,
+    SND_STATUS_NOT_INITIALIZED  = -5,
+    SND_STATUS_BUFFER_TOO_SMALL = -6,
+
+    // Core Engine Execution Errors
+    SND_STATUS_TOO_MANY_ARGUMENTS = 0x50,
+    SND_STATUS_NTDLL_NOT_INITIALIZED,
+    SND_STATUS_RESOLVER_NOT_INITIALIZED,
+    SND_STATUS_OM_NOT_INITIALIZED,
+    SND_STATUS_PIPELINE_EXHAUSTED,
 
     // Command-line argument errors
     SND_STATUS_MISSING_COMMAND_LINE_ARGS = 0x100,
@@ -51,6 +59,8 @@ typedef enum _SND_STATUS_CODE {
     SND_STATUS_INVALID_IMPORT_TABLE_SIZE,
     SND_STATUS_INVALID_FILE_OFFSET,
     SND_STATUS_DIRECTORY_NOT_FOUND,
+    SND_STATUS_CORRUPTED_STATE,
+    SND_STATUS_IMAGE_NOT_MAPPED,
 
     // Reflective loading errors
     SND_STATUS_SECTION_COPY_FAILED = 0x400,
@@ -68,15 +78,32 @@ typedef enum _SND_STATUS_CODE {
     SND_STATUS_EXPORT_FORWARDER_UNSUPPORTED,
     SND_STATUS_MISSING_DLL_EXPORT_NAME,
     SND_STATUS_INVALID_STAGE_SEQUENCE,
-    SND_STATUS_CORRUPTED_STATE,
     SND_FAILED_TO_EXECUTE,
+    SND_STATUS_LOCAL_EXECUTION_BLOCKED,
 
     // Syscall resolution errors
-    SND_STATUS_SSN_NOT_FOUND,
-    SND_STATUS_SSN_BUFFER_TOO_SMALL,
+    SND_STATUS_SSN_NOT_FOUND = 0x500,
 
     // PEB
-    SND_STATUS_PEB_MODULE_NOT_FOUND,
+    SND_STATUS_PEB_MODULE_NOT_FOUND = 0x600,
+    SND_STATUS_PEB_PROCESS_PARAMETERS_NOT_FOUND,
+
+    // OS errors
+    SND_STATUS_MODULE_NOT_FOUND = 0x800,
+    SND_STATUS_SECTION_OPEN_FAILED,
+    SND_STATUS_SECTION_MAP_FAILED,
+    SND_STATUS_HANDLE_CLOSE_FAILED,
+    SND_STATUS_PROCESS_OPEN_FAILED,
+    SND_STATUS_VIRTUAL_ALLOC_FAILED,
+    SND_STATUS_VIRTUAL_WRITE_FAILED,
+    SND_STATUS_VIRTUAL_PROTECT_FAILED,
+    SND_STATUS_THREAD_CREATE_FAILED,
+    SND_STATUS_VIRTUAL_FREE_FAILED,
+
+    // Remote process errors
+    SND_STATUS_ACCESS_DENIED = 0x900,
+    SND_STATUS_INVALID_PAYLOAD,
+    SND_STATUS_INVALID_INJECTION_TARGET,
 } snd_status_code_t;
 
 typedef struct _SND_STATUS {
@@ -113,11 +140,13 @@ static inline snd_status_t _snd_make_success() {
     return status;
 }
 
-#define SND_OK                     _snd_make_success()
-#define SND_ERR(c)                 _snd_make_err(c, 0, __FILE__, __LINE__, NULL)
-#define SND_ERR_CTX(c, ...)        _snd_make_err(c, 0, __FILE__, __LINE__, __VA_ARGS__)
-#define SND_ERR_W32(code)          _snd_make_err(code, GetLastError(), __FILE__, __LINE__, NULL)
-#define SND_ERR_W32_CTX(code, ...) _snd_make_err(code, GetLastError(), __FILE__, __LINE__, __VA_ARGS__)
+#define SND_OK                               _snd_make_success()
+#define SND_ERR(c)                           _snd_make_err(c, 0, __FILE__, __LINE__, NULL)
+#define SND_ERR_CTX(c, ...)                  _snd_make_err(c, 0, __FILE__, __LINE__, __VA_ARGS__)
+#define SND_ERR_W32(code)                    _snd_make_err(code, GetLastError(), __FILE__, __LINE__, NULL)
+#define SND_ERR_W32_CTX(code, ...)           _snd_make_err(code, GetLastError(), __FILE__, __LINE__, __VA_ARGS__)
+#define SND_ERR_NT(code, nt_status)          _snd_make_err(code, nt_status, __FILE__, __LINE__, NULL)
+#define SND_ERR_NT_CTX(code, nt_status, ...) _snd_make_err(code, nt_status, __FILE__, __LINE__, __VA_ARGS__)
 
 #else
 
@@ -133,11 +162,13 @@ static inline snd_status_t _snd_make_err(snd_status_code_t code, int os_error) {
     return status;
 }
 
-#define SND_OK                     _snd_make_success()
-#define SND_ERR(code)              _snd_make_err(code, 0)
-#define SND_ERR_CTX(code, ...)     _snd_make_err(code, 0)
-#define SND_ERR_W32(code)          _snd_make_err(code, GetLastError())
-#define SND_ERR_W32_CTX(code, ...) _snd_make_err(code, GetLastError())
+#define SND_OK                               _snd_make_success()
+#define SND_ERR(code)                        _snd_make_err(code, 0)
+#define SND_ERR_CTX(code, ...)               _snd_make_err(code, 0)
+#define SND_ERR_W32(code)                    _snd_make_err(code, GetLastError())
+#define SND_ERR_W32_CTX(code, ...)           _snd_make_err(code, GetLastError())
+#define SND_ERR_NT(code, nt_status)          _snd_make_err(code, nt_status)
+#define SND_ERR_NT_CTX(code, nt_status, ...) _snd_make_err(code, nt_status)
 
 #endif
 

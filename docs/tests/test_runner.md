@@ -2,61 +2,95 @@
 
 **Location:** `tests/loader/test_runner.py`
 
-The test runner is a data-driven integration test harness that validates the reflective loading pipeline end-to-end. It auto-generates concrete test cases from compact specifications and executes them against both loader variants across both architectures.
+Data-driven integration harness for the reflective loading pipeline. Expands compact `Spec` objects across loader variants and architectures, then executes PoCs as subprocesses.
 
 ## Usage
 
-```
-python tests/loader/test_runner.py [--corkami]
+```text
+python tests/loader/test_runner.py [--corkami] [--mutate]
 ```
 
 | Flag | Description |
 |---|---|
-| *(none)* | Runs the core functional test matrix |
-| `--corkami` | Enables the Corkami PE fuzz corpus tests (requires extracting `tests/fixtures/pe/corkami_fixtures.zip`) |
+| *(none)* | Core functional matrix + arch-mismatch guards |
+| `--corkami` | Corkami PE fuzz corpus (requires extracted fixtures) |
+| `--mutate` | Runtime PE mutation matrix via `pe_mutator.py` |
+
+## Prerequisites
+
+1. **Dual-arch builds** with debug output enabled (tests match stdout substrings):
+
+   ```bash
+   cmake -B build64 -A x64 -DSND_BUILD_TESTS=ON -DSND_BUILD_PAYLOADS=ON -DSND_ENABLE_DEBUG=ON -DSND_USE_PRINTF=ON
+   cmake --build build64 --config Release
+   cmake -B build32 -A Win32 -DSND_BUILD_TESTS=ON -DSND_BUILD_PAYLOADS=ON -DSND_ENABLE_DEBUG=ON -DSND_USE_PRINTF=ON
+   cmake --build build32 --config Release
+   ```
+
+2. **Expected directory layout** (hardcoded in the runner):
+
+   | Path | Contents |
+   |---|---|
+   | `build64/pocs/` | x64 `loader_winapi.exe`, `loader_nowinapi.exe` |
+   | `build32/pocs/` | x86 loader binaries |
+   | `build64/tests/loader/` | x64 test DLLs/EXEs |
+   | `build32/tests/loader/` | x86 test payloads |
+
+   With `SND_ENABLE_DEBUG=OFF`, many `expect_stdout` checks fail because loader debug strings are stripped.
 
 ## Architecture
 
-### The Spec → TestCase Expansion
+### Spec → TestCase expansion
 
-Test definitions are written as compact `Spec` objects that are loader- and architecture-agnostic. Each `Spec` declares:
+Each `Spec` declares loader-agnostic intent:
 
 | Field | Description |
 |---|---|
-| `loaders` | Tuple of loader variants to test against (e.g., `("nowinapi", "winapi")`) |
-| `payload` | Test payload name (e.g., `"test_dll"`, `"test_exe_advanced"`) |
-| `export` | Optional DLL export name to invoke via the FFI bridge |
-| `args` | Arguments passed to the export function |
-| `expect_stdout` | Expected substring in the process stdout |
-| `expect_retval` | Expected FFI return value (auto-formatted per architecture pointer width) |
+| `loaders` | Which loader variants (`nowinapi`, `winapi`) |
+| `payload` | Fixture name under `tests/loader/` |
+| `export` | Optional DLL export for FFI bridge |
+| `args` | Arguments passed to export |
+| `expect_stdout` | Substring match on process stdout |
+| `expect_retval` | Expected FFI return value |
 | `expect_rc` | Expected process exit code |
-| `expect_fail` | If `True`, the test expects the loader to reject the payload gracefully |
+| `expect_fail` | Loader should reject gracefully |
 
-At runtime, each `Spec` is expanded across all `(loader × architecture)` combinations. With 9 specs × 2 loaders × 2 architectures, the core matrix produces 36 test cases from a single declarative table.
+**Core matrix:** `len(SPECS) × len(LOADERS) × len(ARCHES)` — currently **10 specs × 2 loaders × 2 arches = 40** cases from `SPECS`, plus arch-mismatch tests and optional Corkami/mutation suites.
 
-### Test Categories
+### Test categories
 
-#### 1. Functional Tests (from SPECS)
-Validates the end-to-end loading pipeline:
-- **DLL loading with correct arguments** — verifies FFI bridge argument passing (`SayHello` with 3 args).
-- **DLL loading with wrong arguments** — validates the payload's own input validation.
-- **Missing export parameter** — tests the CLI error path.
-- **Advanced DLL** — exercises `kernel32.dll` imports, heap allocations, dynamic `LoadLibraryA`, and multi-API IAT resolution.
-- **Empty DLL** — verifies graceful handling of a DLL with no export directory.
-- **DllMain + Relocations** — confirms `DLL_PROCESS_ATTACH` fired and global variable relocations were applied.
-- **TLS callbacks** — confirms the loader parsed `IMAGE_TLS_DIRECTORY` and fired callbacks before `DllMain`.
-- **EXE loading** — validates entry point execution and exit code capture.
-- **Advanced EXE** — exercises CRT initialization, heap allocation, and `printf`.
+#### 1. Functional tests (from `SPECS`)
 
-#### 2. Architecture Mismatch Tests
-Feeds a 32-bit payload to a 64-bit loader (and vice versa) to verify the compatibility guard rejects it with a clear error message.
+End-to-end loader validation:
 
-#### 3. Heaven's Gate Tests
-- Runs the 32-bit PoC and expects WoW64 detection success.
-- Runs the 64-bit PoC and expects a non-WoW64 rejection message.
+- DLL FFI argument passing (`SayHello`)
+- Bad-args validation in payload
+- Missing `-e` export CLI error
+- Advanced DLL (imports, heap, dynamic load)
+- Empty DLL (missing export directory)
+- **VerifyInit** — DllMain + relocations
+- **VerifyImports** — multi-import IAT resolution
+- **VerifyTLS** — TLS callbacks before DllMain
+- Basic EXE entry + exit code
+- Advanced EXE (CRT init, heap, printf)
 
-#### 4. Corkami Fuzz Tests (opt-in via `--corkami`)
-Iterates every `.exe` in `tests/fixtures/pe/corkami/` (a public corpus of exotic, standards-pushing PE files) and feeds each to the 64-bit `loader_winapi`. These tests verify that the parser does not crash on any real-world edge-case PE file.
+#### 2. Architecture mismatch
 
-#### 5. PE Mutation Tests (via `pe_mutator.py`)
-Generates structurally mutated PE variants at runtime and validates that the loader either successfully loads benign mutations or gracefully rejects breaking mutations without crashing.
+Feeds x86 payload to x64 loader (and vice versa); expects compatibility guard message from `snd_ldr_pe_compatibility_check`.
+
+#### 3. Corkami fuzz (`--corkami`)
+
+Feeds exotic PE fixtures from `tests/fixtures/pe/corkami/` to x64 `loader_winapi`. Requires extracting `corkami_fixtures.zip` (password: `infected`).
+
+#### 4. PE mutation (`--mutate`)
+
+Generates mutated PE variants at runtime; validates graceful reject or successful load. See [pe_mutator.md](pe_mutator.md).
+
+> [!NOTE]
+> Heaven's Gate is **not** covered by this runner — validate manually via `pocs/heavens_gate` on an x86 build under WoW64.
+
+## Related documentation
+
+- [Test payloads](test_payloads.md)
+- [PE mutator](pe_mutator.md)
+- [Building SindriKit](../getting_started/building.md)

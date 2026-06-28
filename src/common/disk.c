@@ -3,13 +3,13 @@
 #include <sindri/common/status.h>
 #include <windows.h>
 
-snd_status_t snd_buffer_load_from_disk(const char *path, snd_buffer_t *out_buf) {
+snd_status_t snd_disk_buffer_load(const char *path, snd_buffer_t *out_buf) {
     if (path == NULL) {
         return SND_ERR(SND_STATUS_INVALID_PATH);
     }
 
     if (out_buf == NULL) {
-        return SND_ERR(SND_STATUS_INVALID_PARAMETER);
+        return SND_ERR(SND_STATUS_NULL_POINTER);
     }
 
     snd_buffer_init(out_buf, NULL, 0, NULL);
