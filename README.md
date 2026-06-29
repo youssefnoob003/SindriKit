@@ -71,7 +71,7 @@ Just two lines for your tool to inherit all of SindriKit's capabilities: PE pars
         │      snd_memory_api_t  ->  alloc · free · protect                          │
         │      snd_module_api_t  ->  load_library · get_proc_address · ...           │
         │      snd_process_api_t ->  open · alloc_remote · write · protect · thread  │
-        │      [ future tables ] ->  thread · object · ...                 │
+        │      [ future tables ] ->  thread · object · ...                           │
         ├──────────────────┬──────────────────────┬──────────────────────────────────┤
         │   Win32 Profile  │    Native Profile    │    Bring Your Own Mechanic       │
         │  VirtualAlloc    │  NtAllocateVirtual   │  Driver · ROP · Exotic           │

@@ -9,19 +9,19 @@ Design patterns, execution models, and telemetry constraints governing SindriKit
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Application / implant / PoC                                 │
+│  Application / implant / PoC                                │
 └───────────────────────────┬─────────────────────────────────┘
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  Domains: loaders · injection · (future) evasion           │
+│  Domains: loaders · injection · (future) evasion            │
 └───────────────────────────┬─────────────────────────────────┘
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  Primitives + execution (DI tables, syscalls, FFI)         │
+│  Primitives + execution (DI tables, syscalls, FFI)          │
 └───────────────────────────┬─────────────────────────────────┘
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  Parsers · Common                                            │
+│  Parsers · Common                                           │
 └─────────────────────────────────────────────────────────────┘
 ```
 

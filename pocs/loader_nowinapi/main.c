@@ -1,5 +1,3 @@
-#include "sindri/primitives/syscalls.h"
-
 #include <sindri.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -116,13 +114,30 @@ int main(int argc, char *argv[]) {
     // First Method: Disk Loading
 
     snd_buffer_t ntdll_buf = {0};
+    snd_ldr_pe_ctx_t ntdll_ctx = {0};
 
     status = snd_disk_buffer_load("C:\\Windows\\System32\\ntdll.dll", &ntdll_buf);
     if (SND_FAILED(status)) {
         goto cleanup;
     }
 
-    ntdll = ntdll_buf.data;
+    ntdll_ctx.mem_api = &snd_mem_win;
+    ntdll_ctx.mod_api = &snd_mod_nt;
+    ntdll_ctx.raw_source = &ntdll_buf;
+
+    status = snd_pe_parse(ntdll_ctx.raw_source, FALSE, &ntdll_ctx.pe);
+    if (SND_FAILED(status)) {
+        goto cleanup;
+    }
+
+    ntdll_ctx.stage = SND_STAGE_PARSED;
+
+    status = snd_ldr_pe_allocate_and_copy_image(&ntdll_ctx);
+    if (SND_FAILED(status)) {
+        goto cleanup;
+    }
+
+    ntdll = ntdll_ctx.target.local_base;
 
     // Second Method: PEB Walking
     /*
@@ -146,7 +161,7 @@ int main(int argc, char *argv[]) {
     snd_syscall_strategy_set(snd_syscall_resolve_ssn_scan);
     snd_syscall_strategy_add(snd_syscall_resolve_ssn_sort);
 
-    ctx.mem_api = &snd_mem_nt;
+    ctx.mem_api = &snd_mem_sys;
     ctx.mod_api = &snd_mod_nt;
 
     printf("[+] Loading payload into memory: %s\n", file_path);
