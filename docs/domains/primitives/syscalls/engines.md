@@ -1,6 +1,6 @@
 # Syscall Resolution Engines
 
-SindriKit ships two built-in SSN resolvers. Both implement `snd_syscall_resolver_t` and plug into the cascading pipeline via `snd_syscall_strategy_set` / `snd_syscall_strategy_add`.
+SindriKit ships two built-in SSN resolvers. Both implement `snd_syscall_resolver_t` and plug into the cascading pipeline via `snd_syscall_set_resolver` / `snd_syscall_add_resolver`.
 
 | Resolver | File | Hook resistance |
 |---|---|---|
@@ -57,7 +57,7 @@ The sorted table is built once per process (`g_table_initialized`). Subsequent r
 
 ### Output
 
-Sets `entry_out->wSystemCall` to the table index. Does **not** populate `pAddress` or `dwHash` — sufficient for `snd_syscall_invoke_asm` which only needs the SSN.
+Sets `entry_out->wSystemCall` to the table index. Does **not** populate `pAddress` or `dwHash` — sufficient for the invoker which only needs the SSN.
 
 ### When to use
 
@@ -71,8 +71,10 @@ Sets `entry_out->wSystemCall` to the table index. Does **not** populate `pAddres
 PoCs and production profiles typically register both:
 
 ```c
-snd_syscall_strategy_set(snd_syscall_resolve_ssn_scan);
-snd_syscall_strategy_add(snd_syscall_resolve_ssn_sort);
+snd_syscall_set_resolver(snd_syscall_resolve_ssn_scan);
+snd_syscall_add_resolver(snd_syscall_resolve_ssn_sort);
+snd_syscall_set_invoker(snd_syscall_indirect_invoke_asm);
+snd_syscall_set_gadget_finder(snd_syscall_find_gadget_scan);
 ```
 
 Evaluation order:
@@ -93,10 +95,37 @@ snd_status_t my_resolver(PVOID ntdll, DWORD func_hash, snd_syscall_entry_t *entr
     return SND_OK;
 }
 
-snd_syscall_strategy_add(my_resolver);
+snd_syscall_add_resolver(my_resolver);
 ```
 
 Maximum **4** strategies in the chain.
+
+---
+
+## Gadget finder (`snd_syscall_find_gadget_scan`)
+
+**Source:** `gadget_scan.c`
+
+Resolves the target function address from the natively loaded NTDLL (via PEB walk, not the user-supplied NTDLL image) and scans for a transition gadget.
+
+### Algorithm
+
+1. Get the natively loaded `ntdll.dll` base via `snd_peb_get_module_base_hash`.
+2. Resolve the export address of the target function using its hash.
+3. Scan forward up to 32 bytes for the transition signature:
+   - **x64:** `syscall; ret` (`0F 05 C3`)
+   - **x86:** Entry point + 5 bytes (skips `mov eax, SSN` and enters the OS-specific transition)
+
+### Output
+
+Populates `entry->pSyscallAddr` with the gadget address.
+
+### When to use
+
+Required when using `snd_syscall_indirect_invoke_asm`. The gadget finder runs automatically during `snd_syscall_resolve` if `g_syscall_gadget_finder` is set.
+
+> [!IMPORTANT]
+> The gadget finder uses the **natively loaded** NTDLL from the process PEB, not the user-supplied NTDLL image. This ensures the gadget points to executable memory regardless of how the SSN source was obtained (disk load, KnownDlls map, etc.).
 
 ---
 

@@ -8,6 +8,7 @@ option(SND_BUILD_PAYLOADS "Build bundled PoC loaders"                    OFF)
 option(SND_BUILD_TESTS    "Build test binaries (DLLs and EXEs)"          OFF)
 option(SND_CRTLESS "Build the framework for pure CRT-less operation"     OFF)
 option(SND_RANDOMIZE_SEED "Use randomized seed for compile-time hashes"  OFF)
+option(SND_USE_DEFAULTS "Use sensible defaults for configuration globals" OFF)
 
 # --- Configuration Guards ---
 if(SND_CRTLESS)
@@ -29,11 +30,11 @@ endif()
 
 # --- Architecture-specific assembly ---
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
-    set(SYSCALL_ASM   src/primitives/execution/syscalls/asm/invoke_x64.asm)
+    set(SYSCALL_ASM   src/primitives/execution/syscalls/asm/invoke_direct_x64.asm src/primitives/execution/syscalls/asm/invoke_indirect_x64.asm)
     set(EXECUTION_ASM src/primitives/execution/ffi/asm/ffi_x64.asm)
     set(HEAVENSGATE_ASM "")
 else()
-    set(SYSCALL_ASM   src/primitives/execution/syscalls/asm/invoke_x86.asm)
+    set(SYSCALL_ASM   src/primitives/execution/syscalls/asm/invoke_direct_x86.asm src/primitives/execution/syscalls/asm/invoke_indirect_x86.asm)
     set(EXECUTION_ASM src/primitives/execution/ffi/asm/ffi_x86.asm)
     set(HEAVENSGATE_ASM src/primitives/execution/heavens_gate/asm/heavens_gate_x86.asm)
 endif()
@@ -110,6 +111,7 @@ add_library(sindri_engine STATIC
     src/primitives/execution/syscalls/syscalls.c
     src/primitives/execution/syscalls/syscalls_scan.c
     src/primitives/execution/syscalls/syscalls_sort.c
+    src/primitives/execution/syscalls/gadget_scan.c
 
     # Assembly & generated
     ${SYSCALL_ASM}
@@ -156,6 +158,10 @@ target_compile_definitions(sindri_engine PUBLIC
     SND_USE_PRINTF=${DEF_USE_PRINTF}
     SND_HASH_${SND_HASH_ALGO}=1
 )
+
+if(SND_USE_DEFAULTS)
+    target_compile_definitions(sindri_engine PUBLIC SND_USE_DEFAULTS=1)
+endif()
 
 # --- Compiler warnings ---
 if(MSVC)

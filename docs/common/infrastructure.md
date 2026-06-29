@@ -10,19 +10,19 @@ The former monolithic `helpers.h` and `nt_defs.h` were split for clarity:
 
 ```
 include/sindri/common/
-├── macros.h      ← compiler / linkage macros (was part of helpers)
-├── memory.h      ← bounds + memzero/memcpy + SND_PTR_ADD
-├── string.h      ← ASCII + wide string helpers (new wide APIs)
-├── buffer.h      ← tracked buffers
+├── macros.h      <- compiler / linkage macros (was part of helpers)
+├── memory.h      <- bounds + memzero/memcpy + SND_PTR_ADD
+├── string.h      <- ASCII + wide string helpers (new wide APIs)
+├── buffer.h      <- tracked buffers
 ├── hash.h
 ├── status.h
-├── debug.h       ← debug macros (was mixed into helpers)
+├── debug.h       <- debug macros (was mixed into helpers)
 └── disk.h
 
-include/sindri/internal/nt/   ← was sindri/internal/nt_defs.h
-├── types.h       ← NT structs, SND_PAGE_SIZE, unicode init
-├── api.h         ← Nt* typedefs
-└── peb.h         ← PEB / LDR layouts
+include/sindri/internal/nt/   <- was sindri/internal/nt_defs.h
+├── types.h       <- NT structs, SND_PAGE_SIZE, unicode init
+├── api.h         <- Nt* typedefs
+└── peb.h         <- PEB / LDR layouts
 ```
 
 ---

@@ -8,7 +8,7 @@ Low-level mechanisms for **calling unknown function signatures**, **crossing WoW
 |---|---|
 | `sindri/primitives/ffi.h` | `snd_ffi_execute` — dynamic call bridge for resolved exports |
 | `sindri/primitives/heavens_gate.h` | `snd_is_wow64`, `snd_hg_execute_64` — WoW64 → native x64 |
-| `sindri/primitives/syscalls.h` | SSN resolution pipeline + `snd_syscall_invoke_asm` (documented under [syscalls/](../syscalls/)) |
+| `sindri/primitives/syscalls.h` | SSN resolution pipeline + `snd_syscall_direct_invoke_asm` / `snd_syscall_indirect_invoke_asm` (documented under [syscalls/](../syscalls/)) |
 
 All three are pulled in by `include/sindri/primitives.h` and `include/sindri.h`.
 
@@ -19,21 +19,24 @@ Implementation lives under `src/primitives/execution/`:
 ```
 src/primitives/execution/
 ├── ffi/
-│   ├── ffi_invoke.c          ← snd_ffi_execute validation + dispatch
+│   ├── ffi_invoke.c          <- snd_ffi_execute validation + dispatch
 │   └── asm/
-│       ├── ffi_x64.asm       ← snd_ffi_bridge_x64
-│       └── ffi_x86.asm       ← snd_ffi_bridge_x86
+│       ├── ffi_x64.asm       <- snd_ffi_bridge_x64
+│       └── ffi_x86.asm       <- snd_ffi_bridge_x86
 ├── heavens_gate/
-│   ├── heavens_gate.c        ← WoW64 detection + argument padding
+│   ├── heavens_gate.c        <- WoW64 detection + argument padding
 │   └── asm/
-│       └── heavens_gate_x86.asm  ← snd_hg_invoke_x86 (CS 0x33 transition)
+│       └── heavens_gate_x86.asm  <- snd_hg_invoke_x86 (CS 0x33 transition)
 └── syscalls/
-    ├── syscalls.c            ← strategy chain, snd_syscall_resolve
-    ├── syscalls_scan.c       ← snd_syscall_resolve_ssn_scan
-    ├── syscalls_sort.c       ← snd_syscall_resolve_ssn_sort
-    └── asm/
-        ├── invoke_x64.asm    ← snd_syscall_invoke_asm (x64)
-        └── invoke_x86.asm    ← snd_syscall_invoke_asm (x86)
+    ├── syscalls.c            <- strategy chain, snd_syscall_resolve
+    ├── syscalls_scan.c       <- snd_syscall_resolve_ssn_scan
+    ├── syscalls_sort.c       <- snd_syscall_resolve_ssn_sort
+        ├── gadget_scan.c     <- snd_syscall_find_gadget_scan
+        └── asm/
+        ├── invoke_direct_x64.asm     <- snd_syscall_direct_invoke_asm (x64)
+        ├── invoke_direct_x86.asm     <- snd_syscall_direct_invoke_asm (x86)
+        ├── invoke_indirect_x64.asm   <- snd_syscall_indirect_invoke_asm (x64)
+        └── invoke_indirect_x86.asm   <- snd_syscall_indirect_invoke_asm (x86)
 ```
 
 Syscall resolution and invocation are documented in the dedicated [syscalls](../syscalls/) subtree; this directory focuses on FFI and Heaven's Gate.
@@ -56,6 +59,6 @@ DllMain, TLS, and EXE entry use **typed direct calls** inside `snd_ldr_pe_execut
 
 ## Related documentation
 
-- [Syscalls domain](../syscalls/README.md) — SSN engines, bootstrap, `snd_syscall_invoke_asm`
+- [Syscalls domain](../syscalls/README.md) — SSN engines, bootstrap, `snd_syscall_direct_invoke_asm` / `snd_syscall_indirect_invoke_asm`
 - [Loaders: DLL export FFI](../../loaders/techniques.md)
 - [PoC: heavens_gate](../../../examples/heavens_gate.md)

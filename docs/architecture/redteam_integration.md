@@ -47,8 +47,13 @@ static snd_status_t bootstrap_engine(void) {
         return status;
 
     snd_syscall_set_ntdll(ntdll);
-    snd_syscall_strategy_set(snd_syscall_resolve_ssn_scan);
-    snd_syscall_strategy_add(snd_syscall_resolve_ssn_sort);
+    snd_syscall_set_resolver(snd_syscall_resolve_ssn_scan);
+    snd_syscall_add_resolver(snd_syscall_resolve_ssn_sort);
+    
+    snd_syscall_set_invoker(snd_syscall_direct_invoke_asm);
+    // or for indirect syscalls:
+    // snd_syscall_set_invoker(snd_syscall_indirect_invoke_asm);
+    // snd_syscall_set_gadget_finder(snd_syscall_find_gadget_scan);
 
     return SND_OK;
 }

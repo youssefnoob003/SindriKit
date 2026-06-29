@@ -80,8 +80,9 @@ int main(int argc, char *argv[]) {
     snd_syscall_set_ntdll(ntdll);
 
     /* Configure the cascading syscall resolution strategy. */
-    snd_syscall_strategy_set(snd_syscall_resolve_ssn_scan);
-    snd_syscall_strategy_add(snd_syscall_resolve_ssn_sort);
+    snd_syscall_set_resolver(snd_syscall_resolve_ssn_scan);
+    snd_syscall_add_resolver(snd_syscall_resolve_ssn_sort);
+    snd_syscall_set_invoker(snd_syscall_direct_invoke_asm);
 
     inj_ctx.target_pid = target_pid;
     inj_ctx.payload    = &inject_buf;

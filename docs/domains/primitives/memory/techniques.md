@@ -45,12 +45,16 @@ Direct syscalls bypass userland EDR hooks inside `ntdll.dll` stubs. The kernel r
 > [!WARNING]
 > `snd_mem_sys` requires the operator to bootstrap the syscall pipeline before invocation:
 >
+
 > ```c
 > snd_syscall_set_ntdll(clean_ntdll_base);
-> snd_syscall_strategy_set(snd_syscall_resolve_ssn_scan);
-> snd_syscall_strategy_add(snd_syscall_resolve_ssn_sort);
+> snd_syscall_set_resolver(snd_syscall_resolve_ssn_scan);
+> snd_syscall_add_resolver(snd_syscall_resolve_ssn_sort);
+> snd_syscall_set_invoker(snd_syscall_direct_invoke_asm);
+> // or for indirect syscalls:
+> // snd_syscall_set_invoker(snd_syscall_indirect_invoke_asm);
+> // snd_syscall_set_gadget_finder(snd_syscall_find_gadget_scan);
 > ```
->
 > If the pipeline is not configured, syscall resolution fails immediately and all `_sys` memory calls return an error.
 
 ## Mixing Backends

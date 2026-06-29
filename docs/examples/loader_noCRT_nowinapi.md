@@ -22,7 +22,7 @@ No CLI — edit `file_path` in `main.c` before building.
 PVOID ntdll = NULL;
 status = snd_peb_get_module_base_hash(SND_HASH_NTDLL_DLL, &ntdll);
 snd_syscall_set_ntdll(ntdll);
-snd_syscall_strategy_set(snd_syscall_resolve_ssn_scan);
+snd_syscall_set_resolver(snd_syscall_resolve_ssn_scan);
 ```
 
 ### 2. Configure loader context

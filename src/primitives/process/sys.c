@@ -1,10 +1,11 @@
-#include "sindri/common/status.h"
-
+#include <sindri/common/status.h>
 #include <sindri/internal/nt/types.h>
 #include <sindri/primitives/process.h>
 #include <sindri/primitives/syscalls.h>
 #include <sindri_hashes.h>
 #include <windows.h>
+
+extern snd_syscall_invoker_t g_syscall_invoker;
 
 static snd_status_t WINAPI sys_open_process(DWORD pid, DWORD desired_access, HANDLE *out_process) {
     if (!out_process)
@@ -25,12 +26,16 @@ static snd_status_t WINAPI sys_open_process(DWORD pid, DWORD desired_access, HAN
 
     snd_syscall_args_t args = {0};
     args.ssn                = entry.wSystemCall;
+    args.sys_addr           = entry.pSyscallAddr;
     args.arg1               = out_process;
     args.arg2               = (PVOID)(ULONG_PTR)desired_access;
     args.arg3               = &oa;
     args.arg4               = (PVOID)&cid;
 
-    NTSTATUS nt_status = snd_syscall_invoke_asm(&args);
+    if (g_syscall_invoker == NULL) {
+        return SND_ERR_CTX(SND_STATUS_NOT_INITIALIZED, "g_syscall_invoker is NULL");
+    }
+    NTSTATUS nt_status = g_syscall_invoker(&args);
     return SND_NT_SUCCESS(nt_status) ? SND_OK : SND_ERR_NT(SND_STATUS_PROCESS_OPEN_FAILED, nt_status);
 }
 
@@ -50,6 +55,7 @@ static snd_status_t WINAPI sys_alloc_remote(HANDLE process, SIZE_T size, DWORD a
 
     snd_syscall_args_t args = {0};
     args.ssn                = entry.wSystemCall;
+    args.sys_addr           = entry.pSyscallAddr;
     args.arg1               = process;
     args.arg2               = &local_base;
     args.arg3               = 0;
@@ -57,7 +63,10 @@ static snd_status_t WINAPI sys_alloc_remote(HANDLE process, SIZE_T size, DWORD a
     args.arg5               = (PVOID)(ULONG_PTR)allocation_type;
     args.arg6               = (PVOID)(ULONG_PTR)protect;
 
-    NTSTATUS nt_status = snd_syscall_invoke_asm(&args);
+    if (g_syscall_invoker == NULL) {
+        return SND_ERR(SND_STATUS_NOT_INITIALIZED);
+    }
+    NTSTATUS nt_status = g_syscall_invoker(&args);
     if (SND_NT_SUCCESS(nt_status)) {
         *out_address = local_base;
         return SND_OK;
@@ -76,13 +85,17 @@ static snd_status_t WINAPI sys_write_remote(HANDLE process, PVOID base_address, 
 
     snd_syscall_args_t args = {0};
     args.ssn                = entry.wSystemCall;
+    args.sys_addr           = entry.pSyscallAddr;
     args.arg1               = process;
     args.arg2               = base_address;
     args.arg3               = (PVOID)buffer;
     args.arg4               = (PVOID)size;
     args.arg5               = &written;
 
-    NTSTATUS nt_status = snd_syscall_invoke_asm(&args);
+    if (g_syscall_invoker == NULL) {
+        return SND_ERR(SND_STATUS_NOT_INITIALIZED);
+    }
+    NTSTATUS nt_status = g_syscall_invoker(&args);
     if (bytes_written)
         *bytes_written = written;
     return SND_NT_SUCCESS(nt_status) ? SND_OK : SND_ERR_NT(SND_STATUS_VIRTUAL_WRITE_FAILED, nt_status);
@@ -101,13 +114,17 @@ static snd_status_t WINAPI sys_protect_remote(HANDLE process, PVOID base_address
 
     snd_syscall_args_t args = {0};
     args.ssn                = entry.wSystemCall;
+    args.sys_addr           = entry.pSyscallAddr;
     args.arg1               = process;
     args.arg2               = &addr;
     args.arg3               = &regionSize;
     args.arg4               = (PVOID)(ULONG_PTR)new_protect;
     args.arg5               = &oldProt;
 
-    NTSTATUS nt_status = snd_syscall_invoke_asm(&args);
+    if (g_syscall_invoker == NULL) {
+        return SND_ERR(SND_STATUS_NOT_INITIALIZED);
+    }
+    NTSTATUS nt_status = g_syscall_invoker(&args);
     if (old_protect)
         *old_protect = oldProt;
     return SND_NT_SUCCESS(nt_status) ? SND_OK : SND_ERR_NT(SND_STATUS_VIRTUAL_PROTECT_FAILED, nt_status);
@@ -126,6 +143,7 @@ static snd_status_t WINAPI sys_create_remote_thread(HANDLE process, PVOID start_
 
     snd_syscall_args_t args = {0};
     args.ssn                = entry.wSystemCall;
+    args.sys_addr           = entry.pSyscallAddr;
     args.arg1               = out_thread;
     args.arg2               = (PVOID)(ULONG_PTR)0x1FFFFF;
     args.arg3               = NULL;
@@ -138,7 +156,10 @@ static snd_status_t WINAPI sys_create_remote_thread(HANDLE process, PVOID start_
     args.arg10              = 0;
     args.arg11              = NULL;
 
-    NTSTATUS nt_status = snd_syscall_invoke_asm(&args);
+    if (g_syscall_invoker == NULL) {
+        return SND_ERR(SND_STATUS_NOT_INITIALIZED);
+    }
+    NTSTATUS nt_status = g_syscall_invoker(&args);
     return SND_NT_SUCCESS(nt_status) ? SND_OK : SND_ERR_NT(SND_STATUS_THREAD_CREATE_FAILED, nt_status);
 }
 
@@ -150,9 +171,13 @@ static snd_status_t WINAPI sys_close_handle(HANDLE handle) {
 
     snd_syscall_args_t args = {0};
     args.ssn                = entry.wSystemCall;
+    args.sys_addr           = entry.pSyscallAddr;
     args.arg1               = handle;
 
-    NTSTATUS nt_status = snd_syscall_invoke_asm(&args);
+    if (g_syscall_invoker == NULL) {
+        return SND_ERR(SND_STATUS_NOT_INITIALIZED);
+    }
+    NTSTATUS nt_status = g_syscall_invoker(&args);
     return SND_NT_SUCCESS(nt_status) ? SND_OK : SND_ERR_NT(SND_STATUS_HANDLE_CLOSE_FAILED, nt_status);
 }
 

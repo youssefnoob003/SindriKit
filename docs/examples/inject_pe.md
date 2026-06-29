@@ -47,8 +47,10 @@ ldr_ctx.raw_source = &file_buf;
 PVOID ntdll = NULL;
 status = snd_om_knowndll_map(&snd_map_nt, L"ntdll.dll", &ntdll);
 snd_syscall_set_ntdll(ntdll);
-snd_syscall_strategy_set(snd_syscall_resolve_ssn_scan);
-snd_syscall_strategy_add(snd_syscall_resolve_ssn_sort);
+snd_syscall_set_resolver(snd_syscall_resolve_ssn_scan);
+snd_syscall_add_resolver(snd_syscall_resolve_ssn_sort);
+snd_syscall_set_invoker(snd_syscall_indirect_invoke_asm);
+snd_syscall_set_gadget_finder(snd_syscall_find_gadget_scan);
 ```
 
 ### 3. Configure loader and injection contexts

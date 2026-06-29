@@ -31,8 +31,10 @@ status = snd_disk_buffer_load("C:\\Windows\\System32\\ntdll.dll", &ntdll_buf);
 PVOID ntdll = ntdll_buf.data;
 
 snd_syscall_set_ntdll(ntdll);
-snd_syscall_strategy_set(snd_syscall_resolve_ssn_scan);
-snd_syscall_strategy_add(snd_syscall_resolve_ssn_sort);
+snd_syscall_set_resolver(snd_syscall_resolve_ssn_scan);
+snd_syscall_add_resolver(snd_syscall_resolve_ssn_sort);
+snd_syscall_set_invoker(snd_syscall_indirect_invoke_asm);
+snd_syscall_set_gadget_finder(snd_syscall_find_gadget_scan);
 ```
 
 Commented alternatives in `pocs/loader_nowinapi/main.c` (swap in for different OpSec trade-offs):

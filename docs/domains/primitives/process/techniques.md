@@ -45,7 +45,7 @@ Remote thread creation uses `NtCreateThreadEx` with the same access mask (`0x1FF
 Direct syscalls bypass userland EDR hooks on `ntdll.dll` stubs. This is the preferred backend for stealth injection profiles.
 
 > [!WARNING]
-> `snd_proc_sys` requires a bootstrapped syscall pipeline (`snd_syscall_set_ntdll`, `snd_syscall_strategy_set`, `snd_syscall_strategy_add`) before any `_sys` process call. See the [Syscall Primitives](../syscalls/README.md) documentation.
+> `snd_proc_sys` requires a bootstrapped syscall pipeline (`snd_syscall_set_ntdll`, `snd_syscall_set_resolver`, `snd_syscall_set_invoker`) before any `_sys` process call. See the [Syscall Primitives](../syscalls/README.md) documentation.
 
 ## Injection Integration
 

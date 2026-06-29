@@ -12,8 +12,8 @@ Keeping these separate reflects the code layout:
 
 ```
 include/sindri/parsers/
-├── pe/          ← buffer-backed PE format parsing
-└── env/         ← live process environment structures
+├── pe/          <- buffer-backed PE format parsing
+└── env/         <- live process environment structures
 ```
 
 NT layout definitions (`SND_PEB`, `SND_LDR_DATA_TABLE_ENTRY`, etc.) live in `include/sindri/internal/nt/peb.h`. Env parsers consume these layouts; they do not duplicate Windows SDK headers to avoid pulling in monitored imports.
@@ -50,7 +50,7 @@ Loaded modules are tracked in three linked lists inside `SND_PEB_LDR_DATA`:
 
 ```
 InLoadOrderModuleList
-InMemoryOrderModuleList      ← used by SindriKit
+InMemoryOrderModuleList      <- used by SindriKit
 InInitializationOrderModuleList
 ```
 

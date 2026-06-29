@@ -13,7 +13,7 @@ Foundation layer for SindriKit. Loaders, injection, and future domains rely on i
 | [modules/](modules/) | `snd_mod_win`, `snd_mod_nt` (no `_sys`) |
 | [mapping/](mapping/) | `snd_map_win`, `snd_map_nt`, `snd_map_sys`, KnownDlls |
 | [process/](process/) | `snd_proc_win`, `snd_proc_nt`, `snd_proc_sys` |
-| [syscalls/](syscalls/) | SSN resolution pipeline, `snd_syscall_invoke_asm` |
+| [syscalls/](syscalls/) | SSN resolution pipeline, configurable invoker (direct / indirect) |
 | [execution/](execution/) | FFI (`snd_ffi_execute`), Heaven's Gate |
 
 Contract definitions: `include/sindri/primitives/os_api.h`  

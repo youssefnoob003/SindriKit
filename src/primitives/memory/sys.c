@@ -7,6 +7,8 @@
 #include <sindri_hashes.h>
 #include <windows.h>
 
+extern snd_syscall_invoker_t g_syscall_invoker;
+
 static snd_status_t WINAPI sys_alloc(LPVOID address, SIZE_T size, DWORD allocation_type, DWORD protect,
                                      LPVOID *out_address) {
     if (!out_address)
@@ -23,6 +25,7 @@ static snd_status_t WINAPI sys_alloc(LPVOID address, SIZE_T size, DWORD allocati
 
     snd_syscall_args_t args = {0};
     args.ssn                = entry.wSystemCall;
+    args.sys_addr           = entry.pSyscallAddr;
     args.arg1               = processHandle;
     args.arg2               = &baseAddress;
     args.arg3               = 0;
@@ -30,7 +33,10 @@ static snd_status_t WINAPI sys_alloc(LPVOID address, SIZE_T size, DWORD allocati
     args.arg5               = (PVOID)(ULONG_PTR)allocation_type;
     args.arg6               = (PVOID)(ULONG_PTR)protect;
 
-    NTSTATUS nt_status = snd_syscall_invoke_asm(&args);
+    if (g_syscall_invoker == NULL) {
+        return SND_ERR_CTX(SND_STATUS_NOT_INITIALIZED, "g_syscall_invoker is NULL");
+    }
+    NTSTATUS nt_status = g_syscall_invoker(&args);
     if (SND_NT_SUCCESS(nt_status)) {
         *out_address = baseAddress;
         return SND_OK;
@@ -54,12 +60,16 @@ static snd_status_t WINAPI sys_free(LPVOID address, SIZE_T size, DWORD free_type
 
     snd_syscall_args_t args = {0};
     args.ssn                = entry.wSystemCall;
+    args.sys_addr           = entry.pSyscallAddr;
     args.arg1               = processHandle;
     args.arg2               = &baseAddress;
     args.arg3               = &regionSize;
     args.arg4               = (PVOID)(ULONG_PTR)free_type;
 
-    NTSTATUS nt_status = snd_syscall_invoke_asm(&args);
+    if (g_syscall_invoker == NULL) {
+        return SND_ERR(SND_STATUS_NOT_INITIALIZED);
+    }
+    NTSTATUS nt_status = g_syscall_invoker(&args);
     return SND_NT_SUCCESS(nt_status) ? SND_OK : SND_ERR_NT(SND_STATUS_VIRTUAL_FREE_FAILED, nt_status);
 }
 
@@ -76,13 +86,17 @@ static snd_status_t WINAPI sys_protect(LPVOID address, SIZE_T size, DWORD new_pr
 
     snd_syscall_args_t args = {0};
     args.ssn                = entry.wSystemCall;
+    args.sys_addr           = entry.pSyscallAddr;
     args.arg1               = processHandle;
     args.arg2               = &baseAddress;
     args.arg3               = &regionSize;
     args.arg4               = (PVOID)(ULONG_PTR)new_protect;
     args.arg5               = &oldProtect;
 
-    NTSTATUS nt_status = snd_syscall_invoke_asm(&args);
+    if (g_syscall_invoker == NULL) {
+        return SND_ERR(SND_STATUS_NOT_INITIALIZED);
+    }
+    NTSTATUS nt_status = g_syscall_invoker(&args);
 
     if (SND_NT_SUCCESS(nt_status)) {
         if (old_protect) {

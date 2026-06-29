@@ -40,7 +40,7 @@ See [Dependency injection](../architecture/dependency_injection.md) for the full
 ## 3. Explicit bootstrap (no implicit globals)
 
 > [!IMPORTANT]
-> Syscall-backed backends (`snd_mem_sys`, `snd_proc_sys`) and the syscall resolution pipeline require **explicit initialization**. The engine does not auto-discover a clean `ntdll` base or SSN table.
+> Syscall-backed backends (`snd_mem_sys`, `snd_proc_sys`) and the syscall resolution pipeline require **explicit initialization**. The engine does not auto-discover a clean `ntdll` base or SSN table (unless `SND_USE_DEFAULTS=ON`, where only `snd_syscall_set_ntdll()` is strictly required).
 
 ### Minimum syscall bootstrap
 
@@ -50,24 +50,30 @@ PVOID ntdll = NULL;
 // Option A: KnownDlls (preferred for inject_pe / production syscall paths)
 status = snd_om_knowndll_map(&snd_map_nt, L"ntdll.dll", &ntdll);
 
-// Option B: disk load (loader_nowinapi default)
-// status = snd_disk_buffer_load("C:\\Windows\\System32\\ntdll.dll", &ntdll_buf);
-// ntdll = ntdll_buf.data;
-
-// Option C: PEB walk (no disk I/O)
+// Option B: PEB walk (no disk I/O)
 // status = snd_peb_get_module_base_hash(SND_HASH_NTDLL_DLL, &ntdll);
 
+// Option C: disk load
+// ...
+
 snd_syscall_set_ntdll(ntdll);
-snd_syscall_strategy_set(snd_syscall_resolve_ssn_scan);
-snd_syscall_strategy_add(snd_syscall_resolve_ssn_sort);
+snd_syscall_set_resolver(snd_syscall_resolve_ssn_scan);
+snd_syscall_add_resolver(snd_syscall_resolve_ssn_sort);
+
+snd_syscall_set_invoker(snd_syscall_direct_invoke_asm);
+// or for indirect syscalls:
+// snd_syscall_set_invoker(snd_syscall_indirect_invoke_asm);
+// snd_syscall_set_gadget_finder(snd_syscall_find_gadget_scan);
 ```
 
 | Step | Purpose |
 |---|---|
 | Obtain `ntdll` base | SSN scan/sort read export stubs from this image |
 | `snd_syscall_set_ntdll` | Registers the base for all resolvers |
-| `snd_syscall_strategy_set` | Primary resolver (scan) |
-| `snd_syscall_strategy_add` | Fallback resolver (sort) |
+| `snd_syscall_set_resolver` | Primary resolver (scan) |
+| `snd_syscall_add_resolver` | Fallback resolver (sort) |
+| `snd_syscall_set_invoker` | Selects direct or indirect invocation |
+| `snd_syscall_set_gadget_finder` | Required for indirect invocation only |
 
 Even when using **`snd_mem_nt`** (in-process `ntdll` stubs, not direct syscalls), PoCs still bootstrap the pipeline so upgrading to **`snd_mem_sys`** requires no other code changes.
 
@@ -147,7 +153,7 @@ snd_inj_cleanup(&inj_ctx);
 |---|---|---|---|---|---|
 | Diagnostic | `loader_winapi` | `snd_mem_win` | `snd_mod_win` | — | Optional |
 | NT stubs | `loader_nowinapi` | `snd_mem_nt` | `snd_mod_nt` | — | Required (disk `ntdll`) |
-| Direct syscalls | `inject_pe` | `snd_mem_sys` | `snd_mod_nt` | `snd_proc_sys` | Required (KnownDlls) |
+| Direct/Indirect syscalls | `inject_pe` | `snd_mem_sys` | `snd_mod_nt` | `snd_proc_sys` | Required (KnownDlls) |
 | CRT-less | `loader_noCRT_nowinapi` | `snd_mem_win` | `snd_mod_nt` | — | Minimal |
 | Shellcode inject | `inject_shell` | — | — | `snd_proc_win` | Yes (KnownDlls; unused while `_win`) |
 | WoW64 x64 exec | `heavens_gate` | Win32 demo alloc | — | — | N/A |
@@ -180,8 +186,10 @@ Avoids `VirtualAlloc` / `LoadLibrary` telemetry; calls still pass through in-pro
 ```c
 snd_om_knowndll_map(&snd_map_nt, L"ntdll.dll", &ntdll);
 snd_syscall_set_ntdll(ntdll);
-snd_syscall_strategy_set(snd_syscall_resolve_ssn_scan);
-snd_syscall_strategy_add(snd_syscall_resolve_ssn_sort);
+snd_syscall_set_resolver(snd_syscall_resolve_ssn_scan);
+snd_syscall_add_resolver(snd_syscall_resolve_ssn_sort);
+snd_syscall_set_invoker(snd_syscall_indirect_invoke_asm);
+snd_syscall_set_gadget_finder(snd_syscall_find_gadget_scan);
 
 ldr_ctx.mem_api = &snd_mem_sys;
 ldr_ctx.mod_api = &snd_mod_nt;

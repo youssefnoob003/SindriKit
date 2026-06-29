@@ -57,8 +57,8 @@ Loaders and injection PoCs use KnownDlls to bootstrap clean `ntdll` for syscall 
 
 ```
 include/sindri/loaders/
-├── reflective/     ← implemented (snd_ldr_pe_ctx_t)
-└── <technique>/    ← future, technique-specific context + engine + chain
+├── reflective/     <- implemented (snd_ldr_pe_ctx_t)
+└── <technique>/    <- future, technique-specific context + engine + chain
 ```
 
 Each technique owns its context struct, stage enum, engine functions, and chain orchestrator.

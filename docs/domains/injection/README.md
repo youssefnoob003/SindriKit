@@ -10,10 +10,10 @@ Each technique adds engine functions and chains under a subdirectory but mutates
 
 ```
 include/sindri/injection/
-├── context.h           ← shared across ALL techniques
+├── context.h           <- shared across ALL techniques
 └── classic/
-    ├── engine.h        ← per-stage classic engine
-    └── chain.h         ← snd_inj_classic_shell, snd_inj_classic_pe
+    ├── engine.h        <- per-stage classic engine
+    └── chain.h         <- snd_inj_classic_shell, snd_inj_classic_pe
 ```
 
 Loader contexts are **per-technique** (`snd_ldr_pe_ctx_t` today).

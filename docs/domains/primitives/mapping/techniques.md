@@ -41,7 +41,7 @@ The `snd_map_sys` implementation invokes `NtOpenSection`, `NtMapViewOfSection`, 
 Direct syscalls bypass userland EDR hooks placed inside `ntdll.dll` stubs. This is the preferred backend for stealth KnownDlls mapping once the syscall pipeline is bootstrapped.
 
 > [!WARNING]
-> `snd_map_sys` requires the operator to configure the syscall pipeline (`snd_syscall_set_ntdll`, `snd_syscall_strategy_set`, `snd_syscall_strategy_add`) before invocation. Unconfigured pipelines cause immediate resolution failures.
+> `snd_map_sys` requires the operator to configure the syscall pipeline (`snd_syscall_set_ntdll`, `snd_syscall_set_resolver`, `snd_syscall_set_invoker`) before invocation. Unconfigured pipelines cause immediate resolution failures.
 
 ## KnownDlls Bootstrapping
 
@@ -56,8 +56,12 @@ if (SND_FAILED(status)) {
 
 // Feed the mapped image into the syscall pipeline
 snd_syscall_set_ntdll(clean_ntdll);
-snd_syscall_strategy_set(snd_syscall_resolve_ssn_scan);
-snd_syscall_strategy_add(snd_syscall_resolve_ssn_sort);
+snd_syscall_set_resolver(snd_syscall_resolve_ssn_scan);
+snd_syscall_add_resolver(snd_syscall_resolve_ssn_sort);
+snd_syscall_set_invoker(snd_syscall_direct_invoke_asm);
+// or for indirect syscalls:
+// snd_syscall_set_invoker(snd_syscall_indirect_invoke_asm);
+// snd_syscall_set_gadget_finder(snd_syscall_find_gadget_scan);
 ```
 
 The helper builds the full Object Manager path (`SND_TARGET_KNOWNDLLS_DIR` + DLL name), calls `open` and `view`, then closes the section handle. The mapped view remains valid after the handle is closed.

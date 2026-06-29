@@ -1,5 +1,3 @@
-#include "sindri/primitives/memory.h"
-
 #include <sindri.h>
 
 int main() {
@@ -19,7 +17,9 @@ int main() {
     snd_syscall_set_ntdll(ntdll);
 
     /* Configure the cascading syscall resolution strategy. */
-    snd_syscall_strategy_set(snd_syscall_resolve_ssn_scan);
+    snd_syscall_set_resolver(snd_syscall_resolve_ssn_scan);
+    snd_syscall_set_invoker(snd_syscall_indirect_invoke_asm);
+    snd_syscall_set_gadget_finder(snd_syscall_find_gadget_scan);
 
     ctx.mem_api = &snd_mem_win;
     ctx.mod_api = &snd_mod_nt;

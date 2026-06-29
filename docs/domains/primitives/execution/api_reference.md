@@ -2,7 +2,7 @@
 
 Public headers: `include/sindri/primitives/ffi.h`, `include/sindri/primitives/heavens_gate.h`.
 
-For the syscall surface (`snd_syscall_resolve`, `snd_syscall_invoke_asm`, strategy pipeline), see [syscalls/api_reference.md](../syscalls/api_reference.md).
+For the syscall surface (`snd_syscall_resolve`, `snd_syscall_direct_invoke_asm`, `snd_syscall_indirect_invoke_asm`, strategy pipeline), see [syscalls/api_reference.md](../syscalls/api_reference.md).
 
 ---
 
@@ -93,6 +93,7 @@ snd_status_t snd_hg_execute_64(
 | `snd_ffi_bridge_x64` | `ffi/asm/ffi_x64.asm` | x64 fast-call + shadow space |
 | `snd_ffi_bridge_x86` | `ffi/asm/ffi_x86.asm` | Reverse-order stack push, ESP restore |
 | `snd_hg_invoke_x86` | `heavens_gate/asm/heavens_gate_x86.asm` | Far return to CS `0x33`, x64 call |
-| `snd_syscall_invoke_asm` | `syscalls/asm/invoke_x64.asm` or `invoke_x86.asm` (arch-selected) | Direct `syscall` instruction stub |
+| `snd_syscall_direct_invoke_asm` | `syscalls/asm/invoke_direct_x64.asm` or `invoke_direct_x86.asm` | Direct `syscall` / `sysenter` instruction stub |
+| `snd_syscall_indirect_invoke_asm` | `syscalls/asm/invoke_indirect_x64.asm` or `invoke_indirect_x86.asm` | Indirect syscall via NTDLL gadget |
 
 These are linked into `sindri::engine`; callers use the C wrappers above.

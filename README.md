@@ -105,9 +105,15 @@ SindriKit treats syscall resolution as an injectable mechanic, stacking strategi
 
 ```c
 snd_syscall_set_ntdll(clean_ntdll);
-snd_syscall_strategy_set(snd_syscall_resolve_ssn_scan);
-snd_syscall_strategy_add(snd_syscall_resolve_ssn_sort);
+snd_syscall_set_resolver(snd_syscall_resolve_ssn_scan);
+snd_syscall_add_resolver(snd_syscall_resolve_ssn_sort);
+snd_syscall_set_invoker(snd_syscall_direct_invoke_asm);
+// or for indirect syscalls:
+// snd_syscall_set_invoker(snd_syscall_indirect_invoke_asm);
+// snd_syscall_set_gadget_finder(snd_syscall_find_gadget_scan);
 ```
+
+The invoker is decoupled from SSN resolution — switch between direct and indirect syscalls without modifying domain code. Indirect invocation jumps to a legitimate NTDLL gadget, keeping the syscall return address within `ntdll.dll`.
 
 ### Compile-Time Algorithm Agility
 
@@ -147,9 +153,15 @@ Bootstrap the syscall pipeline once (typical pattern):
 PVOID clean_ntdll = NULL;
 snd_om_knowndll_map(&snd_map_nt, L"ntdll.dll", &clean_ntdll);
 snd_syscall_set_ntdll(clean_ntdll);
-snd_syscall_strategy_set(snd_syscall_resolve_ssn_scan);
-snd_syscall_strategy_add(snd_syscall_resolve_ssn_sort);
+snd_syscall_set_resolver(snd_syscall_resolve_ssn_scan);
+snd_syscall_add_resolver(snd_syscall_resolve_ssn_sort);
+snd_syscall_set_invoker(snd_syscall_direct_invoke_asm);
+// or for indirect syscalls:
+// snd_syscall_set_invoker(snd_syscall_indirect_invoke_asm);
+// snd_syscall_set_gadget_finder(snd_syscall_find_gadget_scan);
 ```
+
+The invoker is decoupled from SSN resolution — switch between direct and indirect syscalls without modifying domain code. Indirect invocation jumps to a legitimate NTDLL gadget, keeping the syscall return address within `ntdll.dll`.
 
 Swap execution profile with one assignment:
 
@@ -177,6 +189,7 @@ The standard deployment configuration for operational binaries. Every diagnostic
 set(SND_ENABLE_DEBUG   OFF   CACHE BOOL   "")
 set(SND_BUILD_PAYLOADS OFF   CACHE BOOL   "")
 set(SND_RANDOMIZE_SEED ON    CACHE BOOL   "")
+set(SND_USE_DEFAULTS   ON    CACHE BOOL   "")
 set(SND_HASH_ALGO    "DJB2"  CACHE STRING "")
 add_subdirectory(vendor/SindriKit)
 target_link_libraries(my_tool PRIVATE sindri::engine)

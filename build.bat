@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-set CMAKE_FLAGS=-DSND_ENABLE_DEBUG=OFF
+set CMAKE_FLAGS=-DSND_ENABLE_DEBUG=OFF -DSND_USE_PRINTF=OFF -DSND_BUILD_TESTS=OFF -DSND_BUILD_PAYLOADS=OFF -DSND_CRTLESS=OFF -DSND_RANDOMIZE_SEED=OFF -DSND_USE_DEFAULTS=OFF
 set BUILD_TIER=SILENT
 set BUILD_OUTPUT=DEBUGGER
 set HASH_ALGO=DJB2
@@ -10,6 +10,7 @@ set BUILD_POCS=OFF
 set BUILD_CRTLESS=OFF
 set CLEAN_BUILD=OFF
 set RANDOMIZE=OFF
+set USE_DEFAULTS=OFF
 
 :parse_args
 if "%~1"=="" goto :done_args
@@ -42,10 +43,13 @@ if /I "%~1"=="debug" (
 ) else if /I "%~1"=="random" (
     set CMAKE_FLAGS=%CMAKE_FLAGS% -DSND_RANDOMIZE_SEED=ON
     set RANDOMIZE=ON
+) else if /I "%~1"=="defaults" (
+    set CMAKE_FLAGS=%CMAKE_FLAGS% -DSND_USE_DEFAULTS=ON
+    set USE_DEFAULTS=ON
 ) else (
     echo [!] Unknown argument: %~1
     echo.
-    echo Usage: build.bat [debug] [console] [djb2^|fnv1a] [tests] [pocs] [crtless] [clean] [random]
+    echo Usage: build.bat [debug] [console] [djb2^|fnv1a] [tests] [pocs] [crtless] [clean] [random] [defaults]
     echo.
     echo    debug      Enable debug prints  ^(default: silent^)
     echo    console    Use printf output    ^(default: OutputDebugString^)
@@ -56,6 +60,7 @@ if /I "%~1"=="debug" (
     echo    crtless    Build CRT-less
     echo    clean      Delete build dirs before compiling
     echo    random     Use randomized seed for compile-time hashes
+    echo    defaults   Use sensible defaults for configuration globals
     exit /b 1
 )
 shift
@@ -72,6 +77,7 @@ echo [*]   Tests   : %BUILD_TESTS%
 echo [*]   PoCs    : %BUILD_POCS%
 echo [*]   CRTless : %BUILD_CRTLESS%
 echo [*]   Random  : %RANDOMIZE%
+echo [*]   Defaults: %USE_DEFAULTS%
 echo.
 
 if "%CLEAN_BUILD%"=="ON" (

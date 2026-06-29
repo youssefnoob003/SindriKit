@@ -1,9 +1,9 @@
 ; ===========================================================================
-; invoke_x86.asm  -  SindriKit Syscall Invocation ASM Stub (x86 / MASM)
+; invoke_direct_x86.asm  -  SindriKit Syscall Invocation ASM Stub (x86 / MASM)
 ; ===========================================================================
 ;
 ; Exports:
-;   snd_syscall_invoke_asm
+;   snd_syscall_direct_invoke_asm
 ;
 ; Invokes a syscall with up to 11 arguments safely. Handles both native x86
 ; via int 0x2E and WOW64 execution environments.
@@ -14,9 +14,9 @@
 
 .code
 
-PUBLIC snd_syscall_invoke_asm
+PUBLIC snd_syscall_direct_invoke_asm
 
-snd_syscall_invoke_asm PROC
+snd_syscall_direct_invoke_asm PROC
     ; Setup standard frame
     push ebp
     mov ebp, esp
@@ -65,6 +65,6 @@ cleanup:
 
     pop ebp
     ret
-snd_syscall_invoke_asm ENDP
+snd_syscall_direct_invoke_asm ENDP
 
 end

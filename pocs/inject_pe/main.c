@@ -72,10 +72,12 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
     snd_syscall_set_ntdll(ntdll);
+    snd_syscall_set_invoker(snd_syscall_indirect_invoke_asm);
+    snd_syscall_set_gadget_finder(snd_syscall_find_gadget_scan);
 
     /* Configure the cascading syscall resolution strategy. */
-    snd_syscall_strategy_set(snd_syscall_resolve_ssn_scan);
-    snd_syscall_strategy_add(snd_syscall_resolve_ssn_sort);
+    snd_syscall_set_resolver(snd_syscall_resolve_ssn_scan);
+    snd_syscall_add_resolver(snd_syscall_resolve_ssn_sort);
 
     // Configure Loader: Use syscalls for memory, Native API for module resolution
     ldr_ctx.mem_api    = &snd_mem_sys;

@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [1.2.0] - 2026-06-29
+
+Third major release. The framework introduces indirect syscalls and significantly improves the execution pipeline's flexibility and operator experience.
+
+### Major Additions
+- **Indirect Syscalls**: Architecture updated to decouple SSN resolution from invocation. Supports switching between direct and indirect syscall invocation dynamically.
+- **Gadget Finder (`snd_syscall_find_gadget_scan`)**: Dynamically locates the `syscall; ret` (x64) or OS-transition instructions (x86) from the natively loaded `ntdll.dll` in the PEB to properly masquerade the call stack.
+- **x86/x64 Support**: Full indirect syscall assembly stubs for both architectures (`invoke_indirect_x64.asm`, `invoke_indirect_x86.asm`), including proper stack frame alignment and teardown.
+
+### Architecture & Refactoring
+- **Compile-Time Defaults (`SND_USE_DEFAULTS`)**: Added a CMake flag to pre-configure the pipeline's globals (invoker, gadget finder, and primary resolver). Implemented as a macro for OpSec to prevent linking unused scanner/ASM dependencies when disabled.
+- **Pipeline Overhaul**: Replaced `snd_syscall_strategy_set` terminology with `snd_syscall_set_resolver` and added `snd_syscall_set_invoker` / `snd_syscall_set_gadget_finder` to manage the decoupled execution flow.
+- **Documentation**: Extensive documentation overhaul across all primitives, examples, PoCs, and architecture files to reflect the new pipeline structure and OpSec considerations.
+
+---
+
 ## [1.1.0] - 2026-06-26
 
 Second major release. The framework grows from a reflective-loader-centric engine into a multi-domain toolkit with expanded primitives, reorganized headers, and comprehensive documentation.

@@ -1,4 +1,5 @@
 #include <sindri.h>
+#include <sindri/primitives/syscalls.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -113,7 +114,7 @@ int main(int argc, char *argv[]) {
 
     // First Method: Disk Loading
 
-    snd_buffer_t ntdll_buf = {0};
+    snd_buffer_t     ntdll_buf = {0};
     snd_ldr_pe_ctx_t ntdll_ctx = {0};
 
     status = snd_disk_buffer_load("C:\\Windows\\System32\\ntdll.dll", &ntdll_buf);
@@ -121,8 +122,8 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
 
-    ntdll_ctx.mem_api = &snd_mem_win;
-    ntdll_ctx.mod_api = &snd_mod_nt;
+    ntdll_ctx.mem_api    = &snd_mem_win;
+    ntdll_ctx.mod_api    = &snd_mod_win;
     ntdll_ctx.raw_source = &ntdll_buf;
 
     status = snd_pe_parse(ntdll_ctx.raw_source, FALSE, &ntdll_ctx.pe);
@@ -157,9 +158,11 @@ int main(int argc, char *argv[]) {
 
     snd_syscall_set_ntdll(ntdll);
 
-    /* Configure the cascading syscall resolution strategy. */
-    snd_syscall_strategy_set(snd_syscall_resolve_ssn_scan);
-    snd_syscall_strategy_add(snd_syscall_resolve_ssn_sort);
+    snd_syscall_set_invoker(snd_syscall_indirect_invoke_asm);
+    snd_syscall_set_gadget_finder(snd_syscall_find_gadget_scan);
+
+    snd_syscall_set_resolver(snd_syscall_resolve_ssn_scan);
+    snd_syscall_add_resolver(snd_syscall_resolve_ssn_sort);
 
     ctx.mem_api = &snd_mem_sys;
     ctx.mod_api = &snd_mod_nt;

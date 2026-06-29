@@ -100,7 +100,7 @@ The PE chain deliberately interleaves loader and injection stages so relocations
 | 1 | Loader | `snd_pe_parse(ldr_ctx->raw_source, FALSE, &ldr_ctx->pe)` → `SND_STAGE_PARSED` |
 | 2 | Loader | `snd_ldr_pe_compatibility_check` |
 | 3 | Loader | `snd_ldr_pe_allocate_and_copy_image` — local RW mapping |
-| 4 | Injection | `inj_ctx->payload` ← local mapped buffer (`local_base`, `allocated_size`) |
+| 4 | Injection | `inj_ctx->payload` <- local mapped buffer (`local_base`, `allocated_size`) |
 | 5 | Injection | `snd_inj_classic_open_target` |
 | 6 | Injection | `snd_inj_classic_alloc_remote` — remote RW region sized to `allocated_size` |
 | 7 | Loader | `ldr_ctx->target.execution_base = inj_ctx->remote_base` |
