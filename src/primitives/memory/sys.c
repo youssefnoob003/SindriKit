@@ -26,6 +26,8 @@ static snd_status_t WINAPI sys_alloc(LPVOID address, SIZE_T size, DWORD allocati
     snd_syscall_args_t args = {0};
     args.ssn                = entry.wSystemCall;
     args.sys_addr           = entry.pSyscallAddr;
+    args.spoof_addr         = entry.pSpoofAddr;
+    args.spoof_frame_size   = entry.dwSpoofFrameSize;
     args.arg1               = processHandle;
     args.arg2               = &baseAddress;
     args.arg3               = 0;
@@ -61,6 +63,8 @@ static snd_status_t WINAPI sys_free(LPVOID address, SIZE_T size, DWORD free_type
     snd_syscall_args_t args = {0};
     args.ssn                = entry.wSystemCall;
     args.sys_addr           = entry.pSyscallAddr;
+    args.spoof_addr         = entry.pSpoofAddr;
+    args.spoof_frame_size   = entry.dwSpoofFrameSize;
     args.arg1               = processHandle;
     args.arg2               = &baseAddress;
     args.arg3               = &regionSize;
@@ -87,6 +91,8 @@ static snd_status_t WINAPI sys_protect(LPVOID address, SIZE_T size, DWORD new_pr
     snd_syscall_args_t args = {0};
     args.ssn                = entry.wSystemCall;
     args.sys_addr           = entry.pSyscallAddr;
+    args.spoof_addr         = entry.pSpoofAddr;
+    args.spoof_frame_size   = entry.dwSpoofFrameSize;
     args.arg1               = processHandle;
     args.arg2               = &baseAddress;
     args.arg3               = &regionSize;

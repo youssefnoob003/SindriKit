@@ -56,18 +56,11 @@ Custom resolvers matching `snd_syscall_resolver_t` can be added to the chain (ma
 |---|---|---|
 | `snd_syscall_direct_invoke_asm` | `invoke_direct_x64.asm` / `invoke_direct_x86.asm` | Executes `syscall`/`sysenter` inline |
 | `snd_syscall_indirect_invoke_asm` | `invoke_indirect_x64.asm` / `invoke_indirect_x86.asm` | Jumps to a legitimate NTDLL gadget |
+| `snd_syscall_spoofed_invoke_asm` | `invoke_spoofed_x64.asm` / `invoke_spoofed_x86.asm` | Spoofs call stack with dynamic Fat Frame discovery |
 
 > [!NOTE]
-> Build with `SND_USE_DEFAULTS=ON` to pre-configure the invoker (`snd_syscall_direct_invoke_asm`), gadget finder (`snd_syscall_find_gadget_scan`), and primary resolver (`snd_syscall_resolve_ssn_scan`) at compile time. Only `snd_syscall_set_ntdll()` is then needed at runtime.
+> Build with `SND_USE_DEFAULTS=ON` to pre-configure the invoker (`snd_syscall_indirect_invoke_asm`), gadget finder (`snd_syscall_find_gadget_scan`), and primary resolver (`snd_syscall_resolve_ssn_scan`) at compile time. Only `snd_syscall_set_ntdll()` is then needed at runtime.
 
-## Invocation modes
-
-| Function | File | Description |
-|---|---|---|
-| `snd_syscall_direct_invoke_asm` | `invoke_direct_x64.asm` / `invoke_direct_x86.asm` | Executes `syscall`/`sysenter` inline |
-| `snd_syscall_indirect_invoke_asm` | `invoke_indirect_x64.asm` / `invoke_indirect_x86.asm` | Jumps to a legitimate NTDLL gadget |
-
-> **Note on `SND_USE_DEFAULTS`**: When enabled, the framework pre-configures the invoker (indirect), gadget finder, and primary resolver automatically.
 
 ## Table of Contents
 

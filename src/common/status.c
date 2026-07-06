@@ -126,6 +126,8 @@ const char *snd_status_to_string(snd_status_t status) {
     // SSN related errors
     case SND_STATUS_SSN_NOT_FOUND:
         return "SSN not found";
+    case SND_STATUS_GADGET_NOT_FOUND:
+        return "Gadget not found";
 
     // PEB related errors
     case SND_STATUS_PEB_MODULE_NOT_FOUND:

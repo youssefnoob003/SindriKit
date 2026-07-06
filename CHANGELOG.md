@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [1.3.0] - 2026-07-06
+
+Fourth major release. The framework introduces Call Stack Spoofing to defeat EDR virtual unwinding telemetry.
+
+### Major Additions
+- **Advanced Stack Spoofing (`snd_syscall_spoofed_invoke_asm`)**: Implemented full Call Stack Spoofing natively into the execution pipeline using a dynamic JMP-Trampoline.
+- **Dynamic Fat Frame Discovery (`snd_syscall_find_spoof_scan`)**: Automatically parses the Exception Directory (`.pdata`) of `kernel32.dll` to locate functions with massive shadow stack allocations (>= 120 bytes). Embeds the syscall return gadget inside this frame, tricking `RtlVirtualUnwind` into parsing a perfectly intact, legitimate call chain without desynchronization.
+- **Pipeline Overhaul**: Added `pSpoofAddr` and `dwSpoofFrameSize` to `snd_syscall_entry_t`. Added `snd_syscall_set_spoof_finder` to configure the spoof engine.
+
+---
+
 ## [1.2.0] - 2026-06-29
 
 Third major release. The framework introduces indirect syscalls and significantly improves the execution pipeline's flexibility and operator experience.

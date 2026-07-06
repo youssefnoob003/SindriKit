@@ -23,6 +23,8 @@ typedef struct {
     DWORD dwHash;
     WORD  wSystemCall;
     PVOID pSyscallAddr;
+    PVOID pSpoofAddr;
+    DWORD dwSpoofFrameSize; // The actual frame size of the Fat Frame in bytes
 } snd_syscall_entry_t;
 
 /**
@@ -44,6 +46,8 @@ typedef struct {
     // Placed at the end to prevent altering the memory offsets of args 1-11
     // inside the existing Direct ASM stub (invoke_x64.asm).
     PVOID sys_addr;
+    PVOID spoof_addr;
+    DWORD spoof_frame_size;
 } snd_syscall_args_t;
 
 /**
@@ -57,15 +61,18 @@ typedef snd_status_t (*snd_syscall_gadget_finder_t)(snd_syscall_entry_t *entry);
 snd_status_t snd_syscall_resolve_ssn_scan(PVOID ntdll, DWORD func_hash, snd_syscall_entry_t *entry_out);
 snd_status_t snd_syscall_resolve_ssn_sort(PVOID ntdll, DWORD func_hash, snd_syscall_entry_t *entry_out);
 snd_status_t snd_syscall_find_gadget_scan(snd_syscall_entry_t *entry);
+snd_status_t snd_syscall_find_spoof_scan(snd_syscall_entry_t *entry);
 
 #if SND_USE_DEFAULTS
-    #define SND_SYSCALL_INVOKER_DEFAULT       snd_syscall_indirect_invoke_asm
-    #define SND_SYSCALL_GADGET_FINDER_DEFAULT snd_syscall_find_gadget_scan
-    #define SND_SYSCALL_RESOLVER_DEFAULT      snd_syscall_resolve_ssn_scan
+#define SND_SYSCALL_INVOKER_DEFAULT       snd_syscall_indirect_invoke_asm
+#define SND_SYSCALL_GADGET_FINDER_DEFAULT snd_syscall_find_gadget_scan
+#define SND_SYSCALL_SPOOF_FINDER_DEFAULT  snd_syscall_find_spoof_scan
+#define SND_SYSCALL_RESOLVER_DEFAULT      snd_syscall_resolve_ssn_scan
 #else
-    #define SND_SYSCALL_INVOKER_DEFAULT       NULL
-    #define SND_SYSCALL_GADGET_FINDER_DEFAULT NULL
-    #define SND_SYSCALL_RESOLVER_DEFAULT      NULL
+#define SND_SYSCALL_INVOKER_DEFAULT       NULL
+#define SND_SYSCALL_GADGET_FINDER_DEFAULT NULL
+#define SND_SYSCALL_SPOOF_FINDER_DEFAULT  NULL
+#define SND_SYSCALL_RESOLVER_DEFAULT      NULL
 #endif
 
 /**
@@ -82,6 +89,7 @@ void snd_syscall_set_resolver(snd_syscall_resolver_t resolver);
 snd_status_t snd_syscall_add_resolver(snd_syscall_resolver_t resolver);
 void         snd_syscall_set_invoker(snd_syscall_invoker_t invoker);
 void         snd_syscall_set_gadget_finder(snd_syscall_gadget_finder_t finder);
+void         snd_syscall_set_spoof_finder(snd_syscall_gadget_finder_t finder);
 
 /**
  * @brief Sets the global base address of the ntdll.dll module.
@@ -106,6 +114,7 @@ snd_status_t snd_syscall_resolve(DWORD func_hash, snd_syscall_entry_t *entry_out
  */
 extern NTSTATUS snd_syscall_direct_invoke_asm(snd_syscall_args_t *args);
 extern NTSTATUS snd_syscall_indirect_invoke_asm(snd_syscall_args_t *args);
+extern NTSTATUS snd_syscall_spoofed_invoke_asm(snd_syscall_args_t *args);
 
 SND_END_EXTERN_C
 

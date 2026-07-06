@@ -76,7 +76,7 @@ There is **no** `snd_mod_sys`. Import resolution during reflective load uses PEB
 |---|---|---|
 | `_win` | Documented Win32 APIs | memory, modules, mapping, process |
 | `_nt` | NT function pointers resolved via PEB walk + EAT parse | memory, modules, mapping, process |
-| `_sys` | Direct or indirect syscalls (configurable invoker) | memory, mapping, process — **not** modules |
+| `_sys` | Direct, indirect, or spoofed syscalls (configurable invoker) | memory, mapping, process — **not** modules |
 
 ### OpSec profile examples
 
@@ -103,9 +103,10 @@ snd_syscall_set_resolver(snd_syscall_resolve_ssn_scan);
 snd_syscall_add_resolver(snd_syscall_resolve_ssn_sort);
 
 snd_syscall_set_invoker(snd_syscall_direct_invoke_asm);
-// or for indirect syscalls:
-// snd_syscall_set_invoker(snd_syscall_indirect_invoke_asm);
+// or for indirect/spoofed syscalls:
+// snd_syscall_set_invoker(snd_syscall_spoofed_invoke_asm);
 // snd_syscall_set_gadget_finder(snd_syscall_find_gadget_scan);
+// snd_syscall_set_spoof_finder(snd_syscall_find_spoof_scan);
 ```
 
 This is **global execution state**, not part of any DI table. Implant init code runs it once; all `_sys` tables benefit.

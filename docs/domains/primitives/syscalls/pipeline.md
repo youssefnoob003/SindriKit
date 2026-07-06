@@ -12,8 +12,9 @@ SSNs vary across Windows builds. SindriKit resolves them dynamically at runtime 
 flowchart LR
     A["1. snd_syscall_set_ntdll"] --> B["2. snd_syscall_set_resolver / _add"]
     B --> C["3. snd_syscall_set_invoker"]
-    C --> D["4. snd_syscall_resolve"]
-    D --> E["5. g_syscall_invoker"]
+    C --> D["4. snd_syscall_set_spoof_finder"]
+    D --> E["5. snd_syscall_resolve"]
+    E --> F["6. g_syscall_invoker"]
 ```
 
 ### 1. Provide `ntdll` base
@@ -56,7 +57,15 @@ snd_syscall_set_gadget_finder(snd_syscall_find_gadget_scan); // required for ind
 
 Indirect invocation requires a gadget finder. `snd_syscall_find_gadget_scan` resolves the target function in the natively loaded NTDLL via PEB and scans for a `syscall; ret` gadget (x64) or the transition stub entry (x86).
 
-### 4. Resolve SSN
+### 4. Configure spoof finder (optional)
+
+If using `snd_syscall_spoofed_invoke_asm`, you must configure a spoof finder. It dynamicallly searches for a "Fat Frame" in `kernel32.dll` to hide the call stack.
+
+```c
+snd_syscall_set_spoof_finder(snd_syscall_find_spoof_scan);
+```
+
+### 5. Resolve SSN
 
 ```c
 snd_syscall_entry_t entry = {0};
@@ -65,23 +74,25 @@ snd_status_t status = snd_syscall_resolve(SND_HASH_NTOPENSECTION, &entry);
 
 `snd_syscall_resolve` tries each registered strategy in order until one returns `SND_OK`.
 
-### 5. Invoke
+### 6. Invoke
 
 Populate `snd_syscall_args_t` and call via the global invoker:
 
 ```c
 snd_syscall_args_t args = {0};
-args.ssn      = entry.wSystemCall;
-args.sys_addr = entry.pSyscallAddr;
-args.arg1     = ...;
+args.ssn              = entry.wSystemCall;
+args.sys_addr         = entry.pSyscallAddr;
+args.spoof_addr       = entry.pSpoofAddr;
+args.spoof_frame_size = entry.dwSpoofFrameSize;
+args.arg1             = ...;
 // arg2–arg11 as required by the target syscall
 
 NTSTATUS nt_status = g_syscall_invoker(&args);
 ```
 
-`sys_addr` is only used by the indirect invoker; the direct invoker ignores it.
+`sys_addr` is only used by indirect/spoofed invokers. `spoof_addr` and `spoof_frame_size` are only used by the spoofed invoker.
 
-`_sys` primitive implementations (`snd_mem_sys`, `snd_proc_sys`, `snd_map_sys`) wrap steps 4–5 internally — operators only bootstrap once at startup.
+`_sys` primitive implementations (`snd_mem_sys`, `snd_proc_sys`, `snd_map_sys`) wrap steps 5–6 internally — operators only bootstrap once at startup.
 
 ---
 
@@ -96,10 +107,9 @@ if (SND_FAILED(st)) return st;
 snd_syscall_set_ntdll(ntdll);
 snd_syscall_set_resolver(snd_syscall_resolve_ssn_scan);
 snd_syscall_add_resolver(snd_syscall_resolve_ssn_sort);
-snd_syscall_set_invoker(snd_syscall_direct_invoke_asm);
-// or for indirect syscalls:
-// snd_syscall_set_invoker(snd_syscall_indirect_invoke_asm);
-// snd_syscall_set_gadget_finder(snd_syscall_find_gadget_scan);
+snd_syscall_set_invoker(snd_syscall_spoofed_invoke_asm);
+snd_syscall_set_gadget_finder(snd_syscall_find_gadget_scan);
+snd_syscall_set_spoof_finder(snd_syscall_find_spoof_scan);
 
 // Resolve + invoke NtClose
 snd_syscall_entry_t entry = {0};
@@ -107,9 +117,11 @@ st = snd_syscall_resolve(SND_HASH_NTCLOSE, &entry);
 if (SND_FAILED(st)) return st;
 
 snd_syscall_args_t args = {0};
-args.ssn      = entry.wSystemCall;
-args.sys_addr = entry.pSyscallAddr;
-args.arg1     = handle;
+args.ssn              = entry.wSystemCall;
+args.sys_addr         = entry.pSyscallAddr;
+args.spoof_addr       = entry.pSpoofAddr;
+args.spoof_frame_size = entry.dwSpoofFrameSize;
+args.arg1             = handle;
 
 NTSTATUS nt = g_syscall_invoker(&args);
 ```

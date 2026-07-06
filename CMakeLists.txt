@@ -30,12 +30,20 @@ endif()
 
 # --- Architecture-specific assembly ---
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
-    set(SYSCALL_ASM   src/primitives/execution/syscalls/asm/invoke_direct_x64.asm src/primitives/execution/syscalls/asm/invoke_indirect_x64.asm)
-    set(EXECUTION_ASM src/primitives/execution/ffi/asm/ffi_x64.asm)
+    set(SINDRI_EXEC_ASM
+    src/primitives/execution/syscalls/asm/invoke_direct_x64.asm
+    src/primitives/execution/syscalls/asm/invoke_indirect_x64.asm
+    src/primitives/execution/syscalls/asm/invoke_spoofed_x64.asm
+    src/primitives/execution/ffi/asm/ffi_x64.asm
+)
     set(HEAVENSGATE_ASM "")
 else()
-    set(SYSCALL_ASM   src/primitives/execution/syscalls/asm/invoke_direct_x86.asm src/primitives/execution/syscalls/asm/invoke_indirect_x86.asm)
-    set(EXECUTION_ASM src/primitives/execution/ffi/asm/ffi_x86.asm)
+    set(SINDRI_EXEC_ASM
+    src/primitives/execution/syscalls/asm/invoke_direct_x86.asm
+    src/primitives/execution/syscalls/asm/invoke_indirect_x86.asm
+    src/primitives/execution/syscalls/asm/invoke_spoofed_x86.asm
+    src/primitives/execution/ffi/asm/ffi_x86.asm
+)
     set(HEAVENSGATE_ASM src/primitives/execution/heavens_gate/asm/heavens_gate_x86.asm)
 endif()
 
@@ -112,10 +120,10 @@ add_library(sindri_engine STATIC
     src/primitives/execution/syscalls/syscalls_scan.c
     src/primitives/execution/syscalls/syscalls_sort.c
     src/primitives/execution/syscalls/gadget_scan.c
+    src/primitives/execution/syscalls/spoof_scan.c
 
     # Assembly & generated
-    ${SYSCALL_ASM}
-    ${EXECUTION_ASM}
+    ${SINDRI_EXEC_ASM}
     ${HEAVENSGATE_ASM}
     ${GENERATED_HEADER}
 )

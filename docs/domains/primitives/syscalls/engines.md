@@ -129,6 +129,33 @@ Required when using `snd_syscall_indirect_invoke_asm`. The gadget finder runs au
 
 ---
 
+## Spoof finder (`snd_syscall_find_spoof_scan`)
+
+**Source:** `spoof_scan.c`
+
+Locates a trampoline gadget (`RET`) within a legitimate function in `kernel32.dll` to spoof the call stack return address.
+
+### Algorithm (x64)
+
+To prevent frame desynchronization during stack unwinding (where the EDR's `RtlVirtualUnwind` crashes trying to parse our spoofed return address), the spoof finder dynamically hunts for a **"Fat Frame"**.
+
+1. Resolve the natively loaded `kernel32.dll` via PEB.
+2. Manually parse the **Exception Directory** (`.pdata`) of `kernel32.dll` (avoiding native APIs like `RtlLookupFunctionEntry` for stealth).
+3. Iterate through `RUNTIME_FUNCTION` entries and parse their `UNWIND_INFO` structures to calculate the total stack space allocated by each function.
+4. Find a function that allocates at least **120 bytes** (a "Fat Frame"). This ensures the legitimate function's shadow space is large enough to encapsulate our spoofed JMP-trampoline and its arguments.
+5. Scan the body of the Fat Frame function for a `0xC3` (`RET`) instruction.
+6. Populate `entry->pSpoofAddr` with the gadget address and `entry->dwSpoofFrameSize` with the required stack offset.
+
+### Algorithm (x86)
+
+x86 does not use `.pdata` for exception handling. The scanner falls back to resolving `BaseThreadInitThunk` and scanning forward/backward for a simple `RET` gadget.
+
+### When to use
+
+Required when using `snd_syscall_spoofed_invoke_asm`. The spoof finder runs automatically during `snd_syscall_resolve` if `g_syscall_spoof_finder` is set.
+
+---
+
 ## Dependencies
 
 Both resolvers depend on:

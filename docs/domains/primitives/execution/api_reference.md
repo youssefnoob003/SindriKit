@@ -95,5 +95,6 @@ snd_status_t snd_hg_execute_64(
 | `snd_hg_invoke_x86` | `heavens_gate/asm/heavens_gate_x86.asm` | Far return to CS `0x33`, x64 call |
 | `snd_syscall_direct_invoke_asm` | `syscalls/asm/invoke_direct_x64.asm` or `invoke_direct_x86.asm` | Direct `syscall` / `sysenter` instruction stub |
 | `snd_syscall_indirect_invoke_asm` | `syscalls/asm/invoke_indirect_x64.asm` or `invoke_indirect_x86.asm` | Indirect syscall via NTDLL gadget |
+| `snd_syscall_spoofed_invoke_asm` | `syscalls/asm/invoke_spoofed_x64.asm` or `invoke_spoofed_x86.asm` | Spoofed syscall via Fat Frame gadget |
 
 These are linked into `sindri::engine`; callers use the C wrappers above.

@@ -83,6 +83,7 @@ typedef enum _SND_STATUS_CODE {
 
     // Syscall resolution errors
     SND_STATUS_SSN_NOT_FOUND = 0x500,
+    SND_STATUS_GADGET_NOT_FOUND,
 
     // PEB
     SND_STATUS_PEB_MODULE_NOT_FOUND = 0x600,

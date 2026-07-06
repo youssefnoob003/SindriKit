@@ -25,6 +25,8 @@ Internal pipeline depth: **4 strategies** (`SND_MAX_INTERNAL_STRATEGIES` in `sys
 | `dwHash` | `DWORD` | Target function hash |
 | `wSystemCall` | `WORD` | Resolved SSN |
 | `pSyscallAddr` | `PVOID` | Gadget address for indirect invocation (populated by gadget finder) |
+| `pSpoofAddr` | `PVOID` | Gadget address for spoofed invocation (populated by spoof finder) |
+| `dwSpoofFrameSize` | `DWORD` | Frame size of the spoofed function (populated by spoof finder) |
 
 > [!NOTE]
 > The sort resolver sets `wSystemCall` only. `_sys` backends use `entry.wSystemCall` for invocation.
@@ -38,6 +40,8 @@ Arguments for the syscall invoker (`snd_syscall_direct_invoke_asm` or `snd_sysca
 | `ssn` | `WORD` | SSN placed in `EAX`/`RAX` |
 | `arg1`–`arg11` | `PVOID` | Syscall arguments |
 | `sys_addr` | `PVOID` | Gadget address for indirect invocation; ignored by direct stub |
+| `spoof_addr` | `PVOID` | Gadget address for spoofed invocation; ignored by other stubs |
+| `spoof_frame_size` | `DWORD` | Frame size of the spoofed function; ignored by other stubs |
 
 > [!NOTE]
 > `sys_addr` is placed at the end of the struct to preserve memory offsets for args 1-11, ensuring backward compatibility with existing ASM stubs.
@@ -150,6 +154,20 @@ Built-in: `snd_syscall_find_gadget_scan`.
 
 ---
 
+### `snd_syscall_set_spoof_finder`
+
+Sets the global spoof finder function pointer. Only required when using spoofed invocation.
+
+```c
+void snd_syscall_set_spoof_finder(snd_syscall_spoof_finder_t finder);
+```
+
+Built-in: `snd_syscall_find_spoof_scan`.
+
+**Source:** `src/primitives/execution/syscalls/syscalls.c`
+
+---
+
 ## Resolution & Execution
 
 ### `snd_syscall_resolve`
@@ -185,6 +203,18 @@ extern NTSTATUS snd_syscall_indirect_invoke_asm(snd_syscall_args_t *args);
 ```
 
 **Returns:** raw `NTSTATUS`, or `STATUS_INVALID_PARAMETER` (`0xC000000D`) if `sys_addr` is NULL
+
+---
+
+### `snd_syscall_spoofed_invoke_asm`
+
+Architecture-specific ASM stub (`invoke_spoofed_x64.asm` / `invoke_spoofed_x86.asm`). Jumps to a legitimate `syscall; ret` gadget inside NTDLL and spoofs the return address using a JMP-Trampoline inside a Fat Frame. Requires both `sys_addr` (via `snd_syscall_find_gadget_scan`) and `spoof_addr` / `spoof_frame_size` (via `snd_syscall_find_spoof_scan`).
+
+```c
+extern NTSTATUS snd_syscall_spoofed_invoke_asm(snd_syscall_args_t *args);
+```
+
+**Returns:** raw `NTSTATUS`, or `STATUS_INVALID_PARAMETER` (`0xC000000D`) if any required address is NULL
 
 ---
 

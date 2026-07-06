@@ -15,6 +15,7 @@ static int g_strategy_count = 0;
 
 snd_syscall_invoker_t       g_syscall_invoker       = SND_SYSCALL_INVOKER_DEFAULT;
 snd_syscall_gadget_finder_t g_syscall_gadget_finder = SND_SYSCALL_GADGET_FINDER_DEFAULT;
+snd_syscall_gadget_finder_t g_syscall_spoof_finder  = SND_SYSCALL_SPOOF_FINDER_DEFAULT;
 
 void snd_syscall_set_ntdll(PVOID ntdll_base) {
     if (!ntdll_base)
@@ -32,6 +33,12 @@ void snd_syscall_set_gadget_finder(snd_syscall_gadget_finder_t finder) {
     if (!finder)
         return;
     g_syscall_gadget_finder = finder;
+}
+
+void snd_syscall_set_spoof_finder(snd_syscall_gadget_finder_t finder) {
+    if (!finder)
+        return;
+    g_syscall_spoof_finder = finder;
 }
 
 void snd_syscall_set_resolver(snd_syscall_resolver_t resolver) {
@@ -74,6 +81,9 @@ snd_status_t snd_syscall_resolve(DWORD func_hash, snd_syscall_entry_t *entry_out
         if (SND_SUCCEEDED(status)) {
             if (g_syscall_gadget_finder != NULL) {
                 status = g_syscall_gadget_finder(entry_out);
+            }
+            if (g_syscall_spoof_finder != NULL) {
+                status = g_syscall_spoof_finder(entry_out);
             }
             return status;
         }

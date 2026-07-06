@@ -25,6 +25,8 @@ static snd_status_t WINAPI sys_mapping_open(const wchar_t *section_name, HANDLE 
     snd_syscall_args_t args = {0};
     args.ssn                = entry.wSystemCall;
     args.sys_addr           = entry.pSyscallAddr;
+    args.spoof_addr         = entry.pSpoofAddr;
+    args.spoof_frame_size   = entry.dwSpoofFrameSize;
     args.arg1               = out_handle;
     args.arg2               = (PVOID)(ULONG_PTR)SECTION_MAP_READ;
     args.arg3               = &obj_attr;
@@ -52,6 +54,8 @@ static snd_status_t WINAPI sys_mapping_view(HANDLE section_handle, PVOID *out_ba
     snd_syscall_args_t args = {0};
     args.ssn                = entry.wSystemCall;
     args.sys_addr           = entry.pSyscallAddr;
+    args.spoof_addr         = entry.pSpoofAddr;
+    args.spoof_frame_size   = entry.dwSpoofFrameSize;
     args.arg1               = section_handle;
     args.arg2               = GetCurrentProcess();
     args.arg3               = &base_address;
@@ -88,6 +92,8 @@ static snd_status_t WINAPI sys_mapping_close(HANDLE handle) {
     snd_syscall_args_t args = {0};
     args.ssn                = entry.wSystemCall;
     args.sys_addr           = entry.pSyscallAddr;
+    args.spoof_addr         = entry.pSpoofAddr;
+    args.spoof_frame_size   = entry.dwSpoofFrameSize;
     args.arg1               = handle;
 
     if (g_syscall_invoker == NULL) {
