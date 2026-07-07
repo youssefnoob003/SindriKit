@@ -142,9 +142,10 @@ To prevent frame desynchronization during stack unwinding (where the EDR's `RtlV
 1. Resolve the natively loaded `kernel32.dll` via PEB.
 2. Manually parse the **Exception Directory** (`.pdata`) of `kernel32.dll` (avoiding native APIs like `RtlLookupFunctionEntry` for stealth).
 3. Iterate through `RUNTIME_FUNCTION` entries and parse their `UNWIND_INFO` structures to calculate the total stack space allocated by each function.
-4. Find a function that allocates at least **120 bytes** (a "Fat Frame"). This ensures the legitimate function's shadow space is large enough to encapsulate our spoofed JMP-trampoline and its arguments.
-5. Scan the body of the Fat Frame function for a `0xC3` (`RET`) instruction.
-6. Populate `entry->pSpoofAddr` with the gadget address and `entry->dwSpoofFrameSize` with the required stack offset.
+4. Find a function that allocates at least **120 bytes** and at most **240 bytes** (a capped "Fat Frame"). This ensures the legitimate function's shadow space is large enough to encapsulate our spoofed JMP-trampoline and its arguments without risking stack overflow.
+5. **Entropy Randomization:** To avoid creating a deterministic telemetry pattern (where every syscall spoofs the exact same function), the scanner uses an internal pseudo-randomizer seeded by the target function's hash, a static counter, and the memory addresses of the `ntdll` base and the entry struct. This guarantees it will skip a randomized number of valid Fat Frames before settling on one.
+6. Scan the body of the chosen Fat Frame function for a `0xC3` (`RET`) instruction.
+7. Populate `entry->pSpoofAddr` with the gadget address and `entry->dwSpoofFrameSize` with the required stack offset.
 
 ### Algorithm (x86)
 

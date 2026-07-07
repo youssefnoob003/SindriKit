@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [1.3.1] - 2026-07-07
+
+OpSec Patch release addressing deterministic telemetry in stack spoofing.
+
+### Security & OpSec
+- **Fat Frame Entropy:** Implemented a pseudo-randomizer in `snd_syscall_find_spoof_scan` to prevent deterministic stack spoofing telemetry. The engine now uses the target function's SSN hash, a static counter, and the ASLR-dependent memory addresses of the `ntdll` base and the entry struct to randomize the selection of Fat Frames. This ensures payloads do not spoof the exact same `kernel32.dll` function on every execution, shifting the stack trace dynamically.
+- **Fat Frame Hardening:** Added strict bounds checking to the spoof scanner. It now rejects functions that use a Frame Register (which could break `RtlVirtualUnwind` offset calculations) and caps the selected `frame_size` to a maximum of 240 bytes to ensure it cannot overflow the pre-allocated local stack space inside the MASM stub.
+
+---
+
 ## [1.3.0] - 2026-07-06
 
 Fourth major release. The framework introduces Call Stack Spoofing to defeat EDR virtual unwinding telemetry.

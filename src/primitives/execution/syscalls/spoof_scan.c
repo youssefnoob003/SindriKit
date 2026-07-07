@@ -33,6 +33,15 @@ snd_status_t snd_syscall_find_spoof_scan(snd_syscall_entry_t *entry) {
         PRUNTIME_FUNCTION pdata       = (PRUNTIME_FUNCTION)((ULONG_PTR)kernel32 + pdata_rva);
         DWORD             pdata_count = pdata_size / sizeof(RUNTIME_FUNCTION);
 
+        // Simple randomizer using a static counter + hash + memory addresses for entropy
+        static ULONG call_count = 0;
+        ULONG        entropy    = (ULONG)((ULONG_PTR)kernel32 & 0xFFFFFFFF) ^ (ULONG)((ULONG_PTR)entry & 0xFFFFFFFF);
+        ULONG        skip_count = (entry->dwHash + ++call_count + entropy) % 15; // Skip up to 14 fat frames
+        ULONG        current_fat_frames = 0;
+
+        PVOID fallback_gadget     = NULL;
+        DWORD fallback_frame_size = 0;
+
         for (DWORD i = 0; i < pdata_count; i++) {
             PRUNTIME_FUNCTION func = &pdata[i];
 
@@ -46,6 +55,11 @@ snd_status_t snd_syscall_find_spoof_scan(snd_syscall_entry_t *entry) {
 
             if ((version != 1 && version != 2) || (flags & 4) != 0) {
                 continue;
+            }
+
+            BYTE frameReg = unwind_info[3] & 0x0F;
+            if (frameReg != 0) {
+                continue; // Reject functions that use a frame pointer to prevent RtlVirtualUnwind desync
             }
 
             BYTE  countOfCodes = unwind_info[2];
@@ -99,7 +113,7 @@ snd_status_t snd_syscall_find_spoof_scan(snd_syscall_entry_t *entry) {
                 }
             }
 
-            if (frame_size >= 120) {
+            if (frame_size >= 120 && frame_size <= 240) {
                 PBYTE func_body = (PBYTE)((ULONG_PTR)kernel32 + func->BeginAddress);
                 DWORD func_size = func->EndAddress - func->BeginAddress;
 
@@ -111,9 +125,25 @@ snd_status_t snd_syscall_find_spoof_scan(snd_syscall_entry_t *entry) {
                     }
                 }
 
-                if (gadget)
+                if (gadget) {
+                    if (!fallback_gadget) {
+                        fallback_gadget     = gadget;
+                        fallback_frame_size = frame_size;
+                    }
+
+                    if (current_fat_frames < skip_count) {
+                        current_fat_frames++;
+                        gadget = NULL; // Keep searching for the next one
+                        continue;
+                    }
                     break;
+                }
             }
+        }
+
+        if (!gadget && fallback_gadget) {
+            gadget                  = fallback_gadget;
+            entry->dwSpoofFrameSize = fallback_frame_size;
         }
     }
 #else
