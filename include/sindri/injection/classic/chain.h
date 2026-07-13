@@ -7,8 +7,9 @@
 
 SND_BEGIN_EXTERN_C
 
-// Forward declare the loader context so we don't have to include the loader module
-typedef struct _snd_ldr_pe_ctx snd_ldr_pe_ctx_t;
+// Forward declare the loader contexts so we don't have to include the loader module
+typedef struct _snd_ldr_pe_ctx   snd_ldr_pe_ctx_t;
+typedef struct _snd_ldr_coff_ctx snd_ldr_coff_ctx_t;
 
 /**
  * @brief Executes the full classic injection pipeline.
@@ -31,6 +32,19 @@ snd_status_t snd_inj_classic_shell(snd_inj_ctx_t *ctx);
  * @return SND_OK on success, otherwise the failing stage status.
  */
 snd_status_t snd_inj_classic_pe(snd_ldr_pe_ctx_t *ldr_ctx, snd_inj_ctx_t *inj_ctx);
+
+/**
+ * @brief High-level orchestrator that links a COFF loader context and an injection context.
+ *
+ * @param ldr_ctx Initialized COFF loader context with raw_source, mem_api, and mod_api set.
+ * @param inj_ctx Initialized injection context with target_pid, and proc_api set.
+ * @param entry_point The name of the BOF entry point to execute (e.g., "go").
+ * @param args The BOF arguments buffer.
+ * @param arg_len The length of the BOF arguments buffer.
+ * @return SND_OK on success, otherwise the failing stage status.
+ */
+snd_status_t snd_inj_classic_coff(snd_ldr_coff_ctx_t *ldr_ctx, snd_inj_ctx_t *inj_ctx, const char *entry_point,
+                                  void *args, int arg_len);
 
 SND_END_EXTERN_C
 

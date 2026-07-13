@@ -1,7 +1,7 @@
 #include <windows.h>
 
 /* ── TLS Callback Test DLL ─────────────────────────────────────────────────
- * Registers a TLS callback via the CRT initializer list.  The reflective
+ * Registers a TLS callback via the CRT initializer list.  The pe
  * loader must parse the IMAGE_TLS_DIRECTORY and fire the callbacks
  * before calling DllMain.  VerifyTLS checks whether the callback ran.     */
 

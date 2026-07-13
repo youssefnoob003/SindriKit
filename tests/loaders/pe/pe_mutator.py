@@ -2,7 +2,7 @@
 PE Mutation Engine for SindriKit loader stress-testing.
 
 Applies targeted mutations to valid PE files to produce variants that
-exercise the reflective loader's parser and loading pipeline. Mutations
+exercise the pe loader's parser and loading pipeline. Mutations
 fall into two categories:
 
   - **Benign Edge-Cases**: The PE layout is unusual or hyper-optimized, but

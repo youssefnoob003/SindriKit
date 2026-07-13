@@ -1,14 +1,14 @@
 # Loaders: API Reference
 
-Public loader API for the **Reflective PE** technique under `include/sindri/loaders/reflective/`. Include `sindri/loaders.h` or `sindri/loaders/reflective.h`.
+Public loader API for the **Reflective PE** technique under `include/sindri/loaders/pe/`. Include `sindri/loaders.h` or `sindri/loaders/pe.h`.
 
 KnownDlls mapping is documented under [mapping/object-manager](../primitives/mapping/api_reference.md) — not part of this API surface.
 
 ---
 
-## Reflective Chain (`sindri/loaders/reflective/chain.h`)
+## Reflective Chain (`sindri/loaders/pe/chain.h`)
 
-Primary entry points for end-to-end reflective loading.
+Primary entry points for end-to-end pe loading.
 
 ### `snd_ldr_pe_prepare_image`
 
@@ -29,7 +29,7 @@ snd_status_t snd_ldr_pe_prepare_image(snd_ldr_pe_ctx_t *ctx);
 
 **Returns:** `SND_OK` or first failing stage status
 
-**Source:** `src/loaders/reflective/chain.c`
+**Source:** `src/loaders/pe/chain.c`
 
 ---
 
@@ -61,11 +61,11 @@ No-op if preconditions fail (including remote-prepared images).
 
 ---
 
-## Reflective Engine (`sindri/loaders/reflective/engine.h`)
+## Reflective Engine (`sindri/loaders/pe/engine.h`)
 
 ### `snd_ldr_pe_ctx_t`
 
-Central context for reflective PE operations.
+Central context for pe PE operations.
 
 | Field | Type | Description |
 |---|---|---|
@@ -119,7 +119,7 @@ Central context for reflective PE operations.
 | `snd_ldr_pe_get_proc_address` | `>= READY_FOR_EXECUTION` | Export resolve via `snd_pe_get_export_address` |
 | `snd_ldr_pe_free_mapped_image` | (any with `local_base`) | Frees mapping, resets toward `PARSED` |
 
-**Source:** `src/loaders/reflective/engine.c`
+**Source:** `src/loaders/pe/engine.c`
 
 ---
 
@@ -155,6 +155,99 @@ Both macros set `status_out` from `snd_ldr_pe_get_proc_address` and only invoke 
 
 ---
 
+## COFF Reflective Chain (`sindri/loaders/coff/chain.h`)
+
+Primary entry points for end-to-end COFF object loading.
+
+### `snd_ldr_coff_load`
+
+Runs the full local COFF preparation pipeline:
+
+1. `snd_coff_parse(ctx->raw_source, &ctx->coff)`
+2. `snd_ldr_coff_allocate_and_copy_sections`
+3. `snd_ldr_coff_resolve_symbols`
+4. `snd_ldr_coff_apply_relocations`
+
+Leaves context at `SND_COFF_STAGE_RELOCATED`. The COFF image is ready to execute.
+
+```c
+snd_status_t snd_ldr_coff_load(snd_ldr_coff_ctx_t *ctx);
+```
+
+**Returns:** `SND_OK` or first failing stage status
+**Source:** `src/loaders/coff/chain.c`
+
+---
+
+### `snd_ldr_coff_execute_image`
+
+Executes a loaded COFF (BOF) locally.
+
+1. Locates the specified entry point by name (e.g., `"go"`)
+2. Resolves the executable section containing the entry point
+3. Invokes the entry point, passing the provided arguments buffer
+
+```c
+snd_status_t snd_ldr_coff_execute_image(snd_ldr_coff_ctx_t *ctx, const char *entry_point, void *args, int arg_len);
+```
+
+**Returns:** `SND_OK`, `SND_STATUS_COFF_SYMBOL_NOT_FOUND`
+**Source:** `src/loaders/coff/chain.c`
+
+---
+
+## COFF Engine (`sindri/loaders/coff/engine.h`)
+
+### `snd_ldr_coff_ctx_t`
+
+Central context for COFF operations.
+
+| Field | Type | Description |
+|---|---|---|
+| `raw_source` | `const snd_buffer_t *` | Raw on-disk COFF bytes |
+| `coff` | `snd_coff_parser_t` | Parsed COFF context |
+| `target` | `snd_coff_target_t` | Allocation state, section maps, symbol maps |
+| `stage` | `snd_ldr_coff_stage_t` | Current pipeline stage |
+| `mem_api` | `const snd_memory_api_t *` | Injected memory primitives |
+| `mod_api` | `const snd_module_api_t *` | Injected module primitives |
+
+### `snd_coff_target_t`
+
+| Field | Type | Description |
+|---|---|---|
+| `local_base` | `LPVOID` | Local virtual mapping base |
+| `execution_base` | `LPVOID` | Base for relocation delta (remote base when baking for injection) |
+| `allocated_size` | `SIZE_T` | Total memory allocated for sections and metadata |
+| `section_map` | `LPVOID *` | Map of 1-based section indices to memory pointers |
+| `symbol_map` | `LPVOID *` | Map of symbol indices to resolved memory pointers |
+| `iat_base` | `LPVOID` | Storage for resolved external function pointers (simulated IAT) |
+| `trampolines_base` | `LPVOID` | x64 `JMP [RIP+0]` trampolines for distant calls |
+| `bss_base` | `LPVOID` | Storage for uninitialized (`.bss`) symbols |
+
+### `snd_ldr_coff_stage_t`
+
+| Constant | Value |
+|---|---|
+| `SND_COFF_STAGE_UNINITIALIZED` | 0 |
+| `SND_COFF_STAGE_PARSED` | 1 |
+| `SND_COFF_STAGE_MEM_ALLOCATED` | 2 |
+| `SND_COFF_STAGE_SECTIONS_MAPPED` | 3 |
+| `SND_COFF_STAGE_SYMBOLS_RESOLVED` | 4 |
+| `SND_COFF_STAGE_RELOCATED` | 5 |
+| `SND_COFF_STAGE_READY_FOR_EXECUTION` | 6 |
+| `SND_COFF_STAGE_EXECUTED` | 7 |
+
+### Engine functions
+
+| Function | Required stage | Description |
+|---|---|---|
+| `snd_ldr_coff_allocate_and_copy_sections` | `PARSED` | Allocates memory, copies sections, zeroes BSS |
+| `snd_ldr_coff_resolve_symbols` | `SECTIONS_MAPPED` | Resolves external `MODULE$Func` via `mod_api` |
+| `snd_ldr_coff_apply_relocations` | `SYMBOLS_RESOLVED` | Base relocation fixups per section |
+| `snd_ldr_coff_free_mapped_image` | (any with `local_base`) | Frees mapping, resets toward `PARSED` |
+
+**Source:** `src/loaders/coff/engine.c`
+
 ### Stage validation errors
 
 Engine functions return `SND_STATUS_INVALID_STAGE_SEQUENCE` with context naming expected vs actual stage. Allocation failure during section copy rolls back to `SND_STAGE_PARSED` and frees `local_base`.
@@ -170,7 +263,7 @@ Engine functions return `SND_STATUS_INVALID_STAGE_SEQUENCE` with context naming 
 
 ---
 
-## Usage Example (local reflective load)
+## Usage Example (local pe load)
 
 ```c
 snd_ldr_pe_ctx_t ctx = {0};

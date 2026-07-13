@@ -1,6 +1,6 @@
 # Loader Test Suite
 
-This directory contains the full integration test infrastructure for the reflective loading pipeline. It validates that both the Win32 (`loader_winapi`) and Native (`loader_nowinapi`) loaders correctly handle DLLs, EXEs, edge cases, and structurally corrupted PE inputs across both x64 and x86 architectures.
+This directory contains the full integration test infrastructure for the pe loading pipeline. It validates that both the Win32 (`loader_winapi`) and Native (`loader_nowinapi`) loaders correctly handle DLLs, EXEs, edge cases, and structurally corrupted PE inputs across both x64 and x86 architectures.
 
 ## Table of Contents
 - [test_runner.py](test_runner.py)

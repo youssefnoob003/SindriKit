@@ -26,8 +26,8 @@ except ImportError:
 
 BIN64_DIR = r"build64\pocs"
 BIN32_DIR = r"build32\pocs"
-TEST64_DIR = r"build64\tests\loader"
-TEST32_DIR = r"build32\tests\loader"
+TEST64_DIR = r"build64\tests\loaders\pe"
+TEST32_DIR = r"build32\tests\loaders\pe"
 
 CORKAMI_DIR = r"tests\fixtures\pe\corkami"
 CORKAMI_ZIP = r"tests\fixtures\pe\corkami_fixtures.zip"

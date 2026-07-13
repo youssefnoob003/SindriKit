@@ -18,8 +18,9 @@ All injection techniques operate on `snd_inj_ctx_t`. Defined in `context.h`, not
 | `remote_entry_point` | `PVOID` | Optional. If set, thread starts here instead of `remote_base` (PE path) |
 | `remote_size` | `SIZE_T` | Size of the remote allocation |
 | `remote_thread` | `HANDLE` | Handle from `proc_api->create_remote_thread` |
+| `remote_arg` | `PVOID` | Remote address of argument buffer (for COFF execution) |
 | `stage` | `snd_inj_stage_t` | Current pipeline stage |
-| `payload` | `const snd_buffer_t *` | Source buffer (shellcode or locally baked PE image) |
+| `payload` | `const snd_buffer_t *` | Source buffer (shellcode or locally baked image) |
 | `proc_api` | `const snd_process_api_t *` | Injected remote process API |
 
 **Required before any chain:** `target_pid`, `proc_api`, and (for alloc/write) a valid `payload`.
@@ -158,8 +159,32 @@ On success, `inj_ctx` reaches `SND_INJ_STAGE_EXECUTED` with `remote_entry_point`
 
 ---
 
+### `snd_inj_classic_coff`
+
+Orchestrates local COFF preparation via `snd_ldr_coff_ctx_t` and remote injection via `snd_inj_ctx_t`.
+
+```c
+snd_status_t snd_inj_classic_coff(snd_ldr_coff_ctx_t *ldr_ctx, snd_inj_ctx_t *inj_ctx, const char *entry_point, void *args, int arg_len);
+```
+
+| Parameter | Description |
+|---|---|
+| `ldr_ctx` | Loader context with `raw_source`, `mem_api`, and `mod_api` set |
+| `inj_ctx` | Injection context with `target_pid` and `proc_api` set |
+| `entry_point` | The COFF symbol name to execute (e.g., `"go"`) |
+| `args` | Buffer of BOF arguments to pass to the entry point |
+| `arg_len` | Length of the arguments buffer |
+
+The orchestrator allocates a remote buffer large enough for both the COFF sections and the arguments. It passes the remote arguments address to the entry point.
+
+**Returns:** `SND_OK` or failing stage status
+
+**Source:** `src/injection/classic/chain.c`
+
+---
+
 ## Related Documentation
 
-- [Loader API](../loaders/api_reference.md) — `snd_ldr_pe_ctx_t` used by `snd_inj_classic_pe`
+- [Loader API](../loaders/api_reference.md) — `snd_ldr_pe_ctx_t` and `snd_ldr_coff_ctx_t`
 - [Process primitives](../primitives/process/api_reference.md) — `snd_process_api_t` backends
 - [State machines](../../architecture/state_machines.md) — global stage pattern

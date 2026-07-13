@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [1.4.0] - 2026-07-13
+
+Fifth major release. The framework introduces COFF Object Loading and Injection, enabling stealthy execution of Beacon Object Files (BOFs) locally and remotely.
+
+### Major Additions
+- **COFF Loader Engine (`snd_ldr_coff_load`)**: Implemented a complete reflective loader for unlinked COFF object files. Supports zero-copy parsing, section allocation, and base relocation.
+- **BOF Symbol Resolution (`MODULE$Func`)**: The engine dynamically resolves external OS APIs declared via the BOF standard convention by loading the target module and locating the export, dynamically building IAT entries and x64 trampolines on the fly.
+- **Classic COFF Injection (`snd_inj_classic_coff`)**: A new high-level orchestrator that fuses a local COFF loading context with the shared remote injection context. The image is baked locally and marshaled across process boundaries alongside packed argument buffers for remote BOF execution.
+- **COFF Parser Subdomain**: A new robust, bounds-checked parser (`include/sindri/parsers/coff/`) for COFF headers, section headers, symbol tables, and string tables.
+
+### Architecture & Refactoring
+- **Test Infrastructure**: Expanded the automated test runner to process `.obj` fixtures and added dedicated BOF integration payloads (`test_coff_msgbox.c`, `test_coff_args.c`) to validate external symbol resolution and argument parsing.
+
+---
+
 ## [1.3.1] - 2026-07-07
 
 OpSec Patch release addressing deterministic telemetry in stack spoofing.

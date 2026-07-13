@@ -2,7 +2,7 @@
 
 **Location:** `tests/loader/src/`
 
-These C source files are compiled into DLL and EXE payloads that the test runner feeds to the reflective loaders. Each payload is designed to validate a specific capability of the loading pipeline from basic FFI argument passing to TLS callback execution.
+These C source files are compiled into DLL and EXE payloads that the test runner feeds to the pe loaders. Each payload is designed to validate a specific capability of the loading pipeline from basic FFI argument passing to TLS callback execution.
 
 All DLL payloads export functions that return sentinel values (`0xFEEDC0DE`, `0x1337C0DE`, etc.) to signal success or specific failure modes. The test runner validates these return values across architecture boundaries.
 
@@ -45,7 +45,7 @@ Registers a TLS callback via the `.CRT$XLB` section using `#pragma section` and 
 ### Exports
 - **`VerifyTLS()`**: Reads the sentinel back. Returns `0x71500C01` if the TLS callback fired, `0x715FA110` if it did not.
 
-This validates that the reflective loader correctly parses `IMAGE_TLS_DIRECTORY` and iterates the callback array before invoking `DllMain`.
+This validates that the pe loader correctly parses `IMAGE_TLS_DIRECTORY` and iterates the callback array before invoking `DllMain`.
 
 ---
 
@@ -67,3 +67,29 @@ An advanced EXE payload that validates CRT initialization:
 3. Calls `GetCurrentProcessId` and `GetCurrentThreadId` for multi-API IAT verification.
 
 Exits with code `0x1337` on success. The test runner matches `"Successfully allocated and printed"` in stdout.
+
+---
+
+## COFF Test Payloads (`tests/loaders/coff/src/`)
+
+These C source files are compiled into unlinked object files (`.obj`) to be loaded by the COFF engine.
+
+### `test_coff_msgbox.c`
+
+A Beacon Object File (BOF) designed to validate symbol resolution and basic execution.
+
+**Features validated:**
+- **External API Resolution:** Declares `__declspec(dllimport)` for `USER32$MessageBoxA`. Tests `snd_ldr_coff_resolve_symbols`'s ability to extract module and function names.
+- **Relocations:** Validates that the loader correctly relocates calls to external symbols (including trampoline generation on x64).
+- **Execution:** Invoked via the standard BOF `go` entry point.
+
+### `test_coff_args.c`
+
+A Beacon Object File designed to validate argument parsing using the standard BOF `BeaconDataParse` API (provided by `beacon.h`).
+
+**Features validated:**
+- **Argument Passing:** Ensures that `args` and `arg_len` passed to the entry point are correctly marshalled to the payload.
+- **Data parsing:** Validates the extraction of `int` and `short` data from the packed argument buffer.
+
+*(Note: BOF support currently assumes standard `beacon.h` compatibility where applicable.)*
+

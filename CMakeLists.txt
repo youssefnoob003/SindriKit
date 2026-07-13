@@ -86,11 +86,19 @@ add_library(sindri_engine STATIC
     src/parsers/pe/relocations.c
     src/parsers/pe/utils.c
     src/parsers/pe/section_utils.c
+    # COFF parser
+    src/parsers/coff/parser.c
+    src/parsers/coff/utils.c
+    src/parsers/coff/symbols.c
+    src/parsers/coff/relocations.c
     # Environment parsers
     src/parsers/env/peb.c
     # Reflective loader
-    src/loaders/reflective/engine.c
-    src/loaders/reflective/chain.c
+    src/loaders/pe/engine.c
+    src/loaders/pe/chain.c
+    # COFF loader
+    src/loaders/coff/engine.c
+    src/loaders/coff/chain.c
     # Injection domain
     src/injection/context.c
     src/injection/classic/engine.c

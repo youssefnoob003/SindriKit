@@ -138,6 +138,52 @@ snd_inj_cleanup(&inj_ctx);
 
 ---
 
+## Classic Technique: COFF (`snd_inj_classic_coff`)
+
+Similar to the PE classic path, this technique orchestrates a local COFF loading context (`snd_ldr_coff_ctx_t`) with the shared injection context (`snd_inj_ctx_t`). The unlinked object is parsed, memory is allocated, symbols resolved, and sections are relocated locally. The final assembled image, along with any arguments, is then copied to the remote process.
+
+### Interleaved pipeline
+
+The COFF chain relies on allocating a remote buffer that is large enough to hold both the fully prepared COFF sections and the packed argument buffer for the BOF.
+
+| Step | Component | Action |
+|---|---|---|
+| 1 | Loader | `snd_coff_parse` → `SND_COFF_STAGE_PARSED` |
+| 2 | Loader | `snd_ldr_coff_allocate_and_copy_sections` — local mapping |
+| 3 | Injection | `snd_inj_classic_open_target` |
+| 4 | Injection | `snd_inj_classic_alloc_remote` — remote RW sized to `allocated_size + arg_len` |
+| 5 | Loader | `ldr_ctx->target.execution_base = inj_ctx->remote_base` |
+| 6 | Loader | `snd_ldr_coff_resolve_symbols` |
+| 7 | Loader | `snd_ldr_coff_apply_relocations` |
+| 8 | Injection | `snd_inj_classic_write_payload` — writes baked image to remote |
+| 9 | Injection | Optional: write BOF arguments buffer to `remote_base + allocated_size` |
+| 10 | Injection | `snd_inj_classic_set_protections` — flat `PAGE_EXECUTE_READ` |
+| 11 | Injection | Find entry point offset, calculate `remote_entry_point`, and `snd_inj_classic_execute` |
+
+**Key behaviors:**
+
+- **Arguments passing:** The arguments buffer is appended to the payload memory. `create_remote_thread` is invoked with `lpParameter` pointing to this remote argument buffer, adhering to the BOF argument convention `(char *args, int arg_len)`.
+- **Relocations & Trampolines:** Because COFF payloads might call Windows API via `mod_api`, any absolute addresses injected during symbol resolution are automatically relocated to be accurate when the image lands in the remote memory space.
+
+### Example (`pocs/inject_coff/main.c`)
+
+```c
+snd_ldr_coff_ctx_t ldr_ctx = {0};
+snd_inj_ctx_t      inj_ctx = {0};
+
+ldr_ctx.mem_api    = &snd_mem_nt;
+ldr_ctx.mod_api    = &snd_mod_nt;
+ldr_ctx.raw_source = &file_buf;
+
+inj_ctx.target_pid = target_pid;
+inj_ctx.proc_api   = &snd_proc_nt;
+
+snd_status_t status = snd_inj_classic_coff(&ldr_ctx, &inj_ctx, "go", bof_args, bof_arg_len);
+snd_inj_cleanup(&inj_ctx);
+```
+
+---
+
 ## Cleanup
 
 `snd_inj_cleanup` closes `remote_thread` and `target_process` via `proc_api->close_handle`, clears remote fields, and resets stage to `UNINITIALIZED`. It does not free the local loader mapping — callers manage `snd_ldr_pe_free_mapped_image` separately if a local `snd_ldr_pe_ctx_t` was used.

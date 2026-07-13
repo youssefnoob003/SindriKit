@@ -102,7 +102,7 @@ snd_status_t snd_inj_classic_execute(snd_inj_ctx_t *ctx) {
 
     PVOID        start_address = ctx->remote_entry_point ? ctx->remote_entry_point : ctx->remote_base;
     snd_status_t status =
-        ctx->proc_api->create_remote_thread(ctx->target_process, start_address, NULL, &ctx->remote_thread);
+        ctx->proc_api->create_remote_thread(ctx->target_process, start_address, ctx->remote_arg, &ctx->remote_thread);
     if (SND_FAILED(status))
         return status;
 

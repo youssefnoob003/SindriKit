@@ -1,6 +1,6 @@
 # Integration Tests
 
-Automated testing infrastructure for validating the reflective loading pipeline and PE edge cases.
+Automated testing infrastructure for validating the loaders pipeline (PE, COFF) and edge cases.
 
 > [!NOTE]
 > Tests require CRT (`SND_BUILD_TESTS=ON` forces `SND_CRTLESS=OFF`).
@@ -9,7 +9,7 @@ Automated testing infrastructure for validating the reflective loading pipeline 
 
 - [test_runner.md](test_runner.md) — data-driven runner, spec matrix, test categories
 - [pe_mutator.md](pe_mutator.md) — PE mutation engine (benign and breaking cases)
-- [test_payloads.md](test_payloads.md) — fixture payloads and validation logic
+- [test_payloads.md](test_payloads.md) — fixture payloads (PE DLL/EXE and COFF BOFs) and validation logic
 
 ## Related documentation
 

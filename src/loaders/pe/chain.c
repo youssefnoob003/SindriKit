@@ -1,7 +1,7 @@
 #include <sindri/common/debug.h>
 #include <sindri/common/status.h>
-#include <sindri/loaders/reflective/chain.h>
-#include <sindri/loaders/reflective/engine.h>
+#include <sindri/loaders/pe/chain.h>
+#include <sindri/loaders/pe/engine.h>
 #include <windows.h>
 
 typedef BOOL(WINAPI *snd_dll_entry_proc_t)(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved);

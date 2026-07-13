@@ -41,7 +41,7 @@ typedef struct _snd_ldr_pe_ctx {
 } snd_ldr_pe_ctx_t;
 
 /**
- * @brief Portable macro to resolve and call a reflectively loaded DLL export
+ * @brief Portable macro to resolve and call a pely loaded DLL export
  * with arbitrary arguments.
  * @param ctx         Pointer to the initialized loader context.
  * @param name        Plaintext string name of the target export function.
@@ -61,7 +61,7 @@ typedef struct _snd_ldr_pe_ctx {
     } while (0)
 
 /**
- * @brief Portable macro to resolve and call a reflectively loaded DLL export
+ * @brief Portable macro to resolve and call a pely loaded DLL export
  * and capture its return value.
  * @param ctx         Pointer to the initialized loader context.
  * @param name        Plaintext string name of the target export function.
@@ -141,7 +141,7 @@ snd_status_t snd_ldr_pe_get_entry_point(snd_ldr_pe_ctx_t *ctx);
 snd_status_t snd_ldr_pe_get_proc_address(snd_ldr_pe_ctx_t *ctx, const char *func_name, FARPROC *func_addr_out);
 
 /**
- * @brief Frees memory associated with the mapped reflective image.
+ * @brief Frees memory associated with the mapped pe image.
  * @param ctx The loader context.
  */
 void snd_ldr_pe_free_mapped_image(snd_ldr_pe_ctx_t *ctx);

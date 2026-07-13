@@ -46,8 +46,8 @@ Calling `snd_ldr_pe_resolve_imports` before relocations completes yields `SND_ST
 
 ## Reflective loader (`snd_ldr_pe_ctx_t`)
 
-**Header:** `include/sindri/loaders/reflective/engine.h`  
-**Chain:** `include/sindri/loaders/reflective/chain.h`
+**Header:** `include/sindri/loaders/pe/engine.h`  
+**Chain:** `include/sindri/loaders/pe/chain.h`
 
 ### Stage enum (`snd_ldr_pe_stage_t`)
 

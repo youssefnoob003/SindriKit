@@ -65,7 +65,7 @@ This is the most operationally significant choice at parse time.
 |---|---|---|
 | Payload read from disk | `FALSE` | Reflective loader input validation |
 | KnownDlls-mapped `ntdll.dll` | `TRUE` | Syscall SSN resolution, export lookup |
-| Locally mapped reflective image | `TRUE` | Import fixup, relocations, TLS |
+| Locally mapped pe image | `TRUE` | Import fixup, relocations, TLS |
 
 Passing the wrong flag produces out-of-bounds reads (caught by bounds checks) or silent reads from wrong offsets.
 
@@ -183,4 +183,4 @@ TLS callback arrays are located via the TLS data directory. `snd_pe_get_tls_call
 
 ## Internal Section Helpers
 
-`section_utils.h` exposes helpers used by the reflective loader engine (`snd_pe_section_name`, `snd_pe_section_copy_size`, `snd_pe_section_loaded_size`). These are not part of the general-purpose parser contract and are marked internal in their header comments.
+`section_utils.h` exposes helpers used by the pe loader engine (`snd_pe_section_name`, `snd_pe_section_copy_size`, `snd_pe_section_loaded_size`). These are not part of the general-purpose parser contract and are marked internal in their header comments.

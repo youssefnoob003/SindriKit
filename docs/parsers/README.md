@@ -12,13 +12,14 @@ Both are included by `sindri/parsers.h`.
 | Subdomain | Umbrella | Purpose |
 |---|---|---|
 | [pe/](pe/) | `sindri/parsers/pe.h` | PE headers, exports, imports, relocations, TLS |
+| [coff/](coff/) | `sindri/parsers/coff.h` | COFF headers, sections, symbols, relocations |
 | [env/](env/) | `sindri/parsers/env.h` | PEB module walking, local PEB access |
 
 ## How parsers fit the framework
 
 ```
                     ┌─────────────────────────────────────┐
-                    │  Domains (loaders, primitives)     │
+                    │  Domains (loaders, primitives)      │
                     └──────────────┬──────────────────────┘
                                    │
               ┌────────────────────┼────────────────────┐
@@ -27,7 +28,7 @@ Both are included by `sindri/parsers.h`.
               │                    │                    │
               └────────────────────┴────────────────────┘
                                    │
-                          Parsers (PE + Env)
+                          Parsers (PE + Env ...)
 ```
 
 - **Reflective loaders** — validate, relocate, resolve imports, TLS
@@ -40,6 +41,11 @@ Both are included by `sindri/parsers.h`.
 - [pe/README.md](pe/README.md) — overview and header map
 - [pe/techniques.md](pe/techniques.md) — format, bounds, export/import/reloc mechanics
 - [pe/api_reference.md](pe/api_reference.md) — full public PE API
+
+### COFF
+- [coff/README.md](coff/README.md) — overview and header map
+- [coff/techniques.md](coff/techniques.md) — format, symbols, relocations, string table handling
+- [coff/api_reference.md](coff/api_reference.md) — full public COFF API
 
 ### Env
 - [env/README.md](env/README.md) — overview and scope

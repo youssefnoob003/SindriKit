@@ -26,7 +26,7 @@ Loader contexts are **per-technique** (`snd_ldr_pe_ctx_t` today).
 | `sindri/injection/context.h` | `snd_inj_ctx_t`, stages, `snd_inj_cleanup` |
 | `sindri/injection/classic.h` | Classic technique umbrella |
 | `sindri/injection/classic/engine.h` | Per-stage engine functions |
-| `sindri/injection/classic/chain.h` | `snd_inj_classic_shell`, `snd_inj_classic_pe` |
+| `sindri/injection/classic/chain.h` | `snd_inj_classic_shell`, `snd_inj_classic_pe`, `snd_inj_classic_coff` |
 
 ## Implemented techniques
 
@@ -34,6 +34,7 @@ Loader contexts are **per-technique** (`snd_ldr_pe_ctx_t` today).
 |---|---|---|
 | Classic shellcode | `snd_inj_classic_shell` | Raw buffer in `inj_ctx.payload` |
 | Classic PE | `snd_inj_classic_pe` | Local bake + remote execute (requires `snd_ldr_pe_ctx_t`) |
+| Classic COFF | `snd_inj_classic_coff` | Local bake + remote execute (requires `snd_ldr_coff_ctx_t`) |
 
 ## PoCs
 
@@ -41,6 +42,7 @@ Loader contexts are **per-technique** (`snd_ldr_pe_ctx_t` today).
 |---|---|---|
 | `pocs/inject_shell/main.c` | `snd_inj_classic_shell` | KnownDlls bootstrap + `snd_proc_win` |
 | `pocs/inject_pe/main.c` | `snd_inj_classic_pe` | `snd_mem_sys`, `snd_mod_nt`, `snd_proc_sys` |
+| `pocs/inject_coff/main.c` | `snd_inj_classic_coff` | `snd_mem_sys`, `snd_mod_nt`, `snd_proc_nt` |
 
 ## Table of Contents
 

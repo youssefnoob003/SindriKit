@@ -1,8 +1,64 @@
 # Loaders: Techniques
 
-The loaders domain maps PE images into memory and prepares them for execution without the Windows loader. The first implemented technique is **Reflective PE Loading** under `loaders/reflective/`.
+The loaders domain maps images and object files into memory and prepares them for execution without the Windows loader. Implemented techniques include **Reflective PE Loading** (`loaders/pe/`) and **COFF Object Loading** (`loaders/coff/`).
 
-**Prerequisite reading:** [PE parser techniques](../../parsers/pe/techniques.md), [Dependency Injection](../../architecture/dependency_injection.md)
+**Prerequisite reading:** [PE parser techniques](../../parsers/pe/techniques.md), [COFF parser techniques](../../parsers/coff/techniques.md), [Dependency Injection](../../architecture/dependency_injection.md)
+
+---
+
+## COFF Object Loading (BOF)
+
+COFF Object Loading allows executing Beacon Object Files (BOFs) directly from memory. It is heavily utilized in modern C2 frameworks for post-exploitation because the payloads are small, unlinked object files rather than full PE executables.
+
+### Context and DI
+
+Operations run through `snd_ldr_coff_ctx_t` with injected primitives:
+
+```c
+snd_ldr_coff_ctx_t ctx = {0};
+ctx.raw_source = &payload_buf;
+ctx.mem_api    = &snd_mem_sys;   // Memory allocation
+ctx.mod_api    = &snd_mod_nt;    // Symbol resolution
+```
+
+### Target block (`snd_coff_target_t`)
+
+Unlike PE loading, which has a single contiguous `SizeOfImage` mapping, COFF objects require constructing a layout at runtime:
+
+| Field | Role |
+|---|---|
+| `local_base` | Single virtual mapping containing all sections and metadata |
+| `execution_base` | Base used for relocation delta (defaults to `local_base`) |
+| `allocated_size` | Total memory required (sections + alignment + metadata) |
+| `section_map` | Array mapping 1-based section indices to memory pointers |
+| `symbol_map` | Array mapping symbol indices to resolved memory pointers |
+| `iat_base` | Contiguous block holding resolved function addresses |
+| `trampolines_base` | Contiguous block for x64 `JMP [RIP+0]` trampolines |
+| `bss_base` | Block for uninitialized variables (`.bss` equivalents) |
+
+### BOF Symbol Resolution (`MODULE$Func`)
+
+The BOF specification mandates that external OS APIs be declared as `__declspec(dllimport)` or named with a specific convention: `[ModuleName]$[FunctionName]`, e.g., `USER32$MessageBoxA`. 
+
+When `snd_ldr_coff_resolve_symbols` encounters an external symbol:
+1. It splits the module name from the function name.
+2. It uses `ctx->mod_api->load_library` to load the module into the host process.
+3. It uses `ctx->mod_api->get_proc_address` to find the target function.
+4. For x64, if a trampoline is needed (relocation target out of 32-bit range), it writes a `JMP [RIP+0]` followed by the 64-bit absolute address into `trampolines_base`.
+5. It populates `symbol_map[i]` with the target address (or trampoline).
+
+### Stage Machine (`snd_ldr_coff_stage_t`)
+
+| Stage | Set by | Meaning |
+|---|---|---|
+| `SND_COFF_STAGE_UNINITIALIZED` | — | Empty context |
+| `SND_COFF_STAGE_PARSED` | `snd_coff_parse` | Raw COFF parsed |
+| `SND_COFF_STAGE_MEM_ALLOCATED` | `snd_ldr_coff_allocate_and_copy_sections` | Virtual memory reserved |
+| `SND_COFF_STAGE_SECTIONS_MAPPED` | same | Sections copied, metadata zeroed |
+| `SND_COFF_STAGE_SYMBOLS_RESOLVED` | `snd_ldr_coff_resolve_symbols` | Externals resolved |
+| `SND_COFF_STAGE_RELOCATED` | `snd_ldr_coff_apply_relocations` | Section relocations applied |
+| `SND_COFF_STAGE_READY_FOR_EXECUTION` | (n/a for COFF currently) | Same as RELOCATED |
+| `SND_COFF_STAGE_EXECUTED` | `snd_ldr_coff_execute_image` | Entry point invoked |
 
 ---
 

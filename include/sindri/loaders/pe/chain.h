@@ -2,7 +2,7 @@
 #define SND_LOADERS_REFLECTIVE_CHAIN_H
 
 #include <sindri/common/macros.h>
-#include <sindri/loaders/reflective/engine.h>
+#include <sindri/loaders/pe/engine.h>
 
 SND_BEGIN_EXTERN_C
 
@@ -25,7 +25,7 @@ snd_status_t snd_ldr_pe_prepare_image(snd_ldr_pe_ctx_t *ctx);
 snd_status_t snd_ldr_pe_execute_image(snd_ldr_pe_ctx_t *ctx);
 
 /**
- * @brief Cleans up and detaches the reflective image state.
+ * @brief Cleans up and detaches the pe image state.
  *
  * @param ctx Reflective loader context.
  */

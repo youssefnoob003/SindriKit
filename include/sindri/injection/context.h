@@ -25,6 +25,7 @@ typedef struct _snd_inj_ctx_t {
     PVOID  remote_entry_point;
     SIZE_T remote_size;
     HANDLE remote_thread;
+    PVOID  remote_arg;
 
     snd_inj_stage_t stage;
 

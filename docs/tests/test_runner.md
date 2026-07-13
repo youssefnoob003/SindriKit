@@ -2,7 +2,7 @@
 
 **Location:** `tests/loader/test_runner.py`
 
-Data-driven integration harness for the reflective loading pipeline. Expands compact `Spec` objects across loader variants and architectures, then executes PoCs as subprocesses.
+Data-driven integration harness for the pe loading pipeline. Expands compact `Spec` objects across loader variants and architectures, then executes PoCs as subprocesses.
 
 ## Usage
 
@@ -31,10 +31,12 @@ python tests/loader/test_runner.py [--corkami] [--mutate]
 
    | Path | Contents |
    |---|---|
-   | `build64/pocs/` | x64 `loader_winapi.exe`, `loader_nowinapi.exe` |
+   | `build64/pocs/` | x64 `loader_winapi.exe`, `loader_nowinapi.exe`, `loader_coff.exe` |
    | `build32/pocs/` | x86 loader binaries |
    | `build64/tests/loader/` | x64 test DLLs/EXEs |
    | `build32/tests/loader/` | x86 test payloads |
+   | `build64/tests/loaders/coff/` | x64 test BOFs |
+   | `build32/tests/loaders/coff/` | x86 test BOFs |
 
    With `SND_ENABLE_DEBUG=OFF`, many `expect_stdout` checks fail because loader debug strings are stripped.
 
@@ -46,16 +48,16 @@ Each `Spec` declares loader-agnostic intent:
 
 | Field | Description |
 |---|---|
-| `loaders` | Which loader variants (`nowinapi`, `winapi`) |
-| `payload` | Fixture name under `tests/loader/` |
-| `export` | Optional DLL export for FFI bridge |
+| `loaders` | Which loader variants (`nowinapi`, `winapi`, `coff`) |
+| `payload` | Fixture name under `tests/loader/` or `tests/loaders/coff/` |
+| `export` | Optional DLL export for FFI bridge (PE) or BOF entry point (COFF) |
 | `args` | Arguments passed to export |
 | `expect_stdout` | Substring match on process stdout |
 | `expect_retval` | Expected FFI return value |
 | `expect_rc` | Expected process exit code |
 | `expect_fail` | Loader should reject gracefully |
 
-**Core matrix:** `len(SPECS) × len(LOADERS) × len(ARCHES)` — currently **10 specs × 2 loaders × 2 arches = 40** cases from `SPECS`, plus arch-mismatch tests and optional Corkami/mutation suites.
+**Core matrix:** `len(SPECS) × len(LOADERS) × len(ARCHES)` — currently includes tests for both PE loaders and COFF loaders, plus arch-mismatch tests and optional Corkami/mutation suites.
 
 ### Test categories
 

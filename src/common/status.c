@@ -81,11 +81,21 @@ const char *snd_status_to_string(snd_status_t status) {
     case SND_STATUS_INVALID_FILE_OFFSET:
         return "Invalid file offset";
     case SND_STATUS_DIRECTORY_NOT_FOUND:
-        return "Directory not found";
+        return "PE directory not found";
     case SND_STATUS_CORRUPTED_STATE:
-        return "State is corrupted";
+        return "Corrupted internal state";
     case SND_STATUS_IMAGE_NOT_MAPPED:
-        return "Operation requires a mapped PE image";
+        return "Image is not mapped in memory";
+    case SND_STATUS_COFF_SECTION_NOT_FOUND:
+        return "COFF section not found";
+    case SND_STATUS_COFF_SYMBOL_NOT_FOUND:
+        return "COFF symbol not found";
+    case SND_STATUS_COFF_ENTRY_NOT_RWX:
+        return "Entry point is not in a valid executable section";
+    case SND_STATUS_COFF_ENTRY_UNMAPPED:
+        return "Entry point was not mapped";
+    case SND_STATUS_COFF_NAKED_SYMB_REJECTED:
+        return "BOF standard requires [MODULE]$[Function] syntax";
 
     // Reflective loading errors
     case SND_STATUS_SECTION_COPY_FAILED:
@@ -117,11 +127,15 @@ const char *snd_status_to_string(snd_status_t status) {
     case SND_STATUS_MISSING_DLL_EXPORT_NAME:
         return "DLL payload requires an export name";
     case SND_STATUS_INVALID_STAGE_SEQUENCE:
-        return "Invalid stage sequence while loading the PE";
+        return "Invalid loader stage sequence";
     case SND_FAILED_TO_EXECUTE:
-        return "Failed to execute the PE";
+        return "Failed to execute payload";
     case SND_STATUS_LOCAL_EXECUTION_BLOCKED:
-        return "Cannot execute remote-configured image locally";
+        return "Local execution is blocked by configuration";
+    case SND_STATUS_COFF_RELOCATION_UNSUPPORTED:
+        return "Unsupported COFF relocation type";
+    case SND_STATUS_COFF_SYMBOL_RESOLUTION_FAILED:
+        return "COFF external symbol resolution failed";
 
     // SSN related errors
     case SND_STATUS_SSN_NOT_FOUND:

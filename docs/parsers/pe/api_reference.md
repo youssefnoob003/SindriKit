@@ -213,12 +213,10 @@ Patches absolute addresses in a mapped image by `delta_offset`. Early-exits when
 
 ---
 
-## Internal (`sindri/parsers/pe/section_utils.h`)
+## Section Utils (`sindri/parsers/pe/section_utils.h`)
 
 | Function | Notes |
 |---|---|
 | `snd_pe_section_name` | Resolves section names including COFF string table |
 | `snd_pe_section_copy_size` | Raw-to-virtual copy size |
 | `snd_pe_section_loaded_size` | Final virtual section size |
-
-Marked internal — used by the reflective loader engine.

@@ -3,7 +3,7 @@
 #include <sindri/common/memory.h>
 #include <sindri/common/status.h>
 #include <sindri/internal/nt/types.h>
-#include <sindri/loaders/reflective/engine.h>
+#include <sindri/loaders/pe/engine.h>
 #include <sindri/parsers/pe.h>
 #include <windows.h>
 
