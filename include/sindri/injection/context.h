@@ -18,6 +18,7 @@ typedef enum {
     SND_INJ_STAGE_EXECUTED,
 } snd_inj_stage_t;
 
+SND_SHUFFLE_START
 typedef struct _snd_inj_ctx_t {
     DWORD  target_pid;
     HANDLE target_process;
@@ -32,6 +33,7 @@ typedef struct _snd_inj_ctx_t {
     const snd_buffer_t      *payload;
     const snd_process_api_t *proc_api;
 } snd_inj_ctx_t;
+SND_SHUFFLE_END
 
 /**
  * @brief Converts an injection stage enum to a human-readable string.

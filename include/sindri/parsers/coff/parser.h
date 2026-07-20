@@ -15,6 +15,7 @@ SND_BEGIN_EXTERN_C
  * backed by the `source` buffer. They do not own memory and their lifecycles
  * are tied entirely to the validity of the underlying `source`.
  */
+SND_SHUFFLE_START
 typedef struct {
     snd_buffer_t source;
 
@@ -30,6 +31,7 @@ typedef struct {
     BOOL  is_64bit;
     DWORD sections_count;
 } snd_coff_parser_t;
+SND_SHUFFLE_END
 
 /**
  * @brief Parses a raw COFF object file buffer into a parsed COFF representation.

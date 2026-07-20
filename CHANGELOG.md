@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [1.5.0] - 2026-07-20
+
+Sixth major release. The framework introduces the SindriKit Mutation Engine (`SND_MORPH`), a pre-build pipeline that injects structural and instruction-level polymorphism into the compiled binary dynamically.
+
+### Major Additions
+- **Mutation Engine Orchestrator (`SND_MORPH`)**: Added CMake integration that intercepts compilation, creating an ephemeral `morphed/` source tree where a series of Python passes randomly mutate the codebase before it is compiled. Generates a completely unique static binary signature on every build.
+- **C Source Mutator (`junk_c.py`)**: Automatically parses C code to inject volatile-backed opaque predicates of varying shapes (simple `if`, opaque `while`, dummy `switch`, `do-while`). Includes a robust brace and semicolon parser to safely buffer statements and prevent `C4702` (unreachable code) errors.
+- **Assembly Polymorphism (`masm_mutate.py`)**: Mutates x86 and x64 MASM stubs with functional NOP equivalents (e.g. `xchg eax, eax`) and mathematically neutral, EFLAGS-preserving operations (e.g. `lea reg, [reg]`, `mov reg, reg`). Fully ABI-aware to prevent register clobbering.
+- **Structural Scrambling (`struct_shuffle.py`)**: Randomizes the memory layout of internal C structures dynamically. Supports opt-in via `SND_SHUFFLE_START`/`SND_SHUFFLE_END` macros, respects nested structures, and safely skips preprocessor blocks.
+- **Call Graph Splitting & Dead Functions**: The C mutator can now dynamically generate random `static` C functions packed with non-signatured math loops at the global scope, and invoke them from within unreachable opaque predicate branches to severely complicate static call graph analysis.
+
 ## [1.4.0] - 2026-07-13
 
 Fifth major release. The framework introduces COFF Object Loading and Injection, enabling stealthy execution of Beacon Object Files (BOFs) locally and remotely.

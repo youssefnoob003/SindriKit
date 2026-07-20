@@ -9,6 +9,7 @@ option(SND_BUILD_TESTS    "Build test binaries (DLLs and EXEs)"          OFF)
 option(SND_CRTLESS "Build the framework for pure CRT-less operation"     OFF)
 option(SND_RANDOMIZE_SEED "Use randomized seed for compile-time hashes"  OFF)
 option(SND_USE_DEFAULTS "Use sensible defaults for configuration globals" OFF)
+option(SND_MORPH "Run polymorphic mutation engine before build" OFF)
 
 # --- Configuration Guards ---
 if(SND_CRTLESS)
@@ -28,23 +29,60 @@ if(NOT WIN32)
     message(FATAL_ERROR "SindriKit supports Windows targets only.")
 endif()
 
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+
+if(SND_MORPH)
+    set(MORPH_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/scripts/mutator/morph.py")
+    set(MORPH_OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/morphed")
+    message(STATUS "SindriKit: SND_MORPH enabled. Running mutation engine...")
+    message(STATUS "  Python: ${Python3_EXECUTABLE}")
+    message(STATUS "  Script: ${MORPH_SCRIPT}")
+    message(STATUS "  In Dir: ${CMAKE_CURRENT_SOURCE_DIR}")
+    message(STATUS "  Out Dir: ${MORPH_OUT_DIR}")
+    execute_process(
+        COMMAND "${Python3_EXECUTABLE}" -u "${MORPH_SCRIPT}" --in-dir "${CMAKE_CURRENT_SOURCE_DIR}" --out-dir "${MORPH_OUT_DIR}"
+        RESULT_VARIABLE MORPH_RES
+        OUTPUT_VARIABLE MORPH_OUT
+        ERROR_VARIABLE MORPH_ERR
+    )
+    if(NOT MORPH_RES EQUAL 0)
+        message(FATAL_ERROR "SindriKit: Mutation engine failed.\nResult: ${MORPH_RES}\nOutput:\n${MORPH_OUT}\nError:\n${MORPH_ERR}")
+    endif()
+
+    set(SND_SRC_DIR "${MORPH_OUT_DIR}/src")
+    set(SND_INC_DIR "${MORPH_OUT_DIR}/include")
+    set(SND_ASM_DIR "${MORPH_OUT_DIR}/asm")
+    set(SND_POCS_DIR "${MORPH_OUT_DIR}/pocs")
+    set(SND_TESTS_DIR "${MORPH_OUT_DIR}/tests")
+    set(SND_CONFIG_DIR "${MORPH_OUT_DIR}/config")
+    set(SND_SCRIPTS_DIR "${MORPH_OUT_DIR}/scripts")
+else()
+    set(SND_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    set(SND_INC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
+    set(SND_ASM_DIR "${CMAKE_CURRENT_SOURCE_DIR}/asm")
+    set(SND_POCS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/pocs")
+    set(SND_TESTS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests")
+    set(SND_CONFIG_DIR "${CMAKE_CURRENT_SOURCE_DIR}/config")
+    set(SND_SCRIPTS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/scripts")
+endif()
+
 # --- Architecture-specific assembly ---
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
     set(SINDRI_EXEC_ASM
-    src/primitives/execution/syscalls/asm/invoke_direct_x64.asm
-    src/primitives/execution/syscalls/asm/invoke_indirect_x64.asm
-    src/primitives/execution/syscalls/asm/invoke_spoofed_x64.asm
-    src/primitives/execution/ffi/asm/ffi_x64.asm
+    ${SND_SRC_DIR}/primitives/execution/syscalls/asm/invoke_direct_x64.asm
+    ${SND_SRC_DIR}/primitives/execution/syscalls/asm/invoke_indirect_x64.asm
+    ${SND_SRC_DIR}/primitives/execution/syscalls/asm/invoke_spoofed_x64.asm
+    ${SND_SRC_DIR}/primitives/execution/ffi/asm/ffi_x64.asm
 )
     set(HEAVENSGATE_ASM "")
 else()
     set(SINDRI_EXEC_ASM
-    src/primitives/execution/syscalls/asm/invoke_direct_x86.asm
-    src/primitives/execution/syscalls/asm/invoke_indirect_x86.asm
-    src/primitives/execution/syscalls/asm/invoke_spoofed_x86.asm
-    src/primitives/execution/ffi/asm/ffi_x86.asm
+    ${SND_SRC_DIR}/primitives/execution/syscalls/asm/invoke_direct_x86.asm
+    ${SND_SRC_DIR}/primitives/execution/syscalls/asm/invoke_indirect_x86.asm
+    ${SND_SRC_DIR}/primitives/execution/syscalls/asm/invoke_spoofed_x86.asm
+    ${SND_SRC_DIR}/primitives/execution/ffi/asm/ffi_x86.asm
 )
-    set(HEAVENSGATE_ASM src/primitives/execution/heavens_gate/asm/heavens_gate_x86.asm)
+    set(HEAVENSGATE_ASM ${SND_SRC_DIR}/primitives/execution/heavens_gate/asm/heavens_gate_x86.asm)
 endif()
 
 # --- Compile-time hash generation ---
@@ -53,8 +91,8 @@ find_package(Python3 REQUIRED COMPONENTS Interpreter)
 set(SND_HASH_ALGO "DJB2" CACHE STRING "Hashing algorithm (DJB2, FNV1A)")
 string(TOUPPER "${SND_HASH_ALGO}" SND_HASH_ALGO)
 
-set(HASH_MANIFEST    "${CMAKE_CURRENT_SOURCE_DIR}/config/hashes.ini")
-set(HASH_SCRIPT      "${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_hashes.py")
+set(HASH_MANIFEST    "${SND_CONFIG_DIR}/hashes.ini")
+set(HASH_SCRIPT      "${SND_SCRIPTS_DIR}/generate_hashes.py")
 set(GENERATED_HEADER "${CMAKE_CURRENT_BINARY_DIR}/generated/sindri_hashes.h")
 
 # Generate hashes at configure time.
@@ -74,61 +112,61 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${HASH_MANIFEST} 
 # --- Static library ---
 add_library(sindri_engine STATIC
     # Common
-    src/common/status.c
-    src/common/debug.c
-    src/common/buffer.c
-    src/common/hash.c
-    src/common/disk.c
+    ${SND_SRC_DIR}/common/status.c
+    ${SND_SRC_DIR}/common/debug.c
+    ${SND_SRC_DIR}/common/buffer.c
+    ${SND_SRC_DIR}/common/hash.c
+    ${SND_SRC_DIR}/common/disk.c
     # PE parser
-    src/parsers/pe/parser.c
-    src/parsers/pe/exports.c
-    src/parsers/pe/imports.c
-    src/parsers/pe/relocations.c
-    src/parsers/pe/utils.c
-    src/parsers/pe/section_utils.c
+    ${SND_SRC_DIR}/parsers/pe/parser.c
+    ${SND_SRC_DIR}/parsers/pe/exports.c
+    ${SND_SRC_DIR}/parsers/pe/imports.c
+    ${SND_SRC_DIR}/parsers/pe/relocations.c
+    ${SND_SRC_DIR}/parsers/pe/utils.c
+    ${SND_SRC_DIR}/parsers/pe/section_utils.c
     # COFF parser
-    src/parsers/coff/parser.c
-    src/parsers/coff/utils.c
-    src/parsers/coff/symbols.c
-    src/parsers/coff/relocations.c
+    ${SND_SRC_DIR}/parsers/coff/parser.c
+    ${SND_SRC_DIR}/parsers/coff/utils.c
+    ${SND_SRC_DIR}/parsers/coff/symbols.c
+    ${SND_SRC_DIR}/parsers/coff/relocations.c
     # Environment parsers
-    src/parsers/env/peb.c
+    ${SND_SRC_DIR}/parsers/env/peb.c
     # Reflective loader
-    src/loaders/pe/engine.c
-    src/loaders/pe/chain.c
+    ${SND_SRC_DIR}/loaders/pe/engine.c
+    ${SND_SRC_DIR}/loaders/pe/chain.c
     # COFF loader
-    src/loaders/coff/engine.c
-    src/loaders/coff/chain.c
+    ${SND_SRC_DIR}/loaders/coff/engine.c
+    ${SND_SRC_DIR}/loaders/coff/chain.c
     # Injection domain
-    src/injection/context.c
-    src/injection/classic/engine.c
-    src/injection/classic/chain.c
+    ${SND_SRC_DIR}/injection/context.c
+    ${SND_SRC_DIR}/injection/classic/engine.c
+    ${SND_SRC_DIR}/injection/classic/chain.c
     # Memory primitives
-    src/primitives/memory/win.c
-    src/primitives/memory/sys.c
-    src/primitives/memory/nt.c
+    ${SND_SRC_DIR}/primitives/memory/win.c
+    ${SND_SRC_DIR}/primitives/memory/sys.c
+    ${SND_SRC_DIR}/primitives/memory/nt.c
     # Mapping primitives
-    src/primitives/mapping/win.c
-    src/primitives/mapping/sys.c
-    src/primitives/mapping/nt.c
+    ${SND_SRC_DIR}/primitives/mapping/win.c
+    ${SND_SRC_DIR}/primitives/mapping/sys.c
+    ${SND_SRC_DIR}/primitives/mapping/nt.c
     # Module primitives
-    src/primitives/modules/win.c
-    src/primitives/modules/nt.c
+    ${SND_SRC_DIR}/primitives/modules/win.c
+    ${SND_SRC_DIR}/primitives/modules/nt.c
     # Process primitives
-    src/primitives/process/win.c
-    src/primitives/process/sys.c
-    src/primitives/process/nt.c
+    ${SND_SRC_DIR}/primitives/process/win.c
+    ${SND_SRC_DIR}/primitives/process/sys.c
+    ${SND_SRC_DIR}/primitives/process/nt.c
     # Object manager
-    src/primitives/object_manager/knowndlls.c
+    ${SND_SRC_DIR}/primitives/object_manager/knowndlls.c
     # Execution
-    src/primitives/execution/ffi/ffi_invoke.c
-    src/primitives/execution/heavens_gate/heavens_gate.c
+    ${SND_SRC_DIR}/primitives/execution/ffi/ffi_invoke.c
+    ${SND_SRC_DIR}/primitives/execution/heavens_gate/heavens_gate.c
     # Syscall resolvers
-    src/primitives/execution/syscalls/syscalls.c
-    src/primitives/execution/syscalls/syscalls_scan.c
-    src/primitives/execution/syscalls/syscalls_sort.c
-    src/primitives/execution/syscalls/gadget_scan.c
-    src/primitives/execution/syscalls/spoof_scan.c
+    ${SND_SRC_DIR}/primitives/execution/syscalls/syscalls.c
+    ${SND_SRC_DIR}/primitives/execution/syscalls/syscalls_scan.c
+    ${SND_SRC_DIR}/primitives/execution/syscalls/syscalls_sort.c
+    ${SND_SRC_DIR}/primitives/execution/syscalls/gadget_scan.c
+    ${SND_SRC_DIR}/primitives/execution/syscalls/spoof_scan.c
 
     # Assembly & generated
     ${SINDRI_EXEC_ASM}
@@ -137,17 +175,17 @@ add_library(sindri_engine STATIC
 )
 
 if(SND_CRTLESS)
-    target_sources(sindri_engine PRIVATE src/common/crt_manifest.c)
+    target_sources(sindri_engine PRIVATE ${SND_SRC_DIR}/common/crt_manifest.c)
 endif()
 
 add_library(sindri::engine ALIAS sindri_engine)
 
 target_include_directories(sindri_engine
     PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${SND_INC_DIR}
         ${CMAKE_CURRENT_BINARY_DIR}/generated
     PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${SND_SRC_DIR}
 )
 
 target_compile_features(sindri_engine PUBLIC c_std_99)
@@ -201,9 +239,9 @@ endif()
 
 # --- Optional subdirectories ---
 if(SND_BUILD_PAYLOADS)
-    add_subdirectory(pocs)
+    add_subdirectory(${SND_POCS_DIR} ${CMAKE_CURRENT_BINARY_DIR}/pocs)
 endif()
 
 if(SND_BUILD_TESTS)
-    add_subdirectory(tests)
+    add_subdirectory(${SND_TESTS_DIR} ${CMAKE_CURRENT_BINARY_DIR}/tests)
 endif()

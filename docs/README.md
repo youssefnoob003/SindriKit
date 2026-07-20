@@ -18,8 +18,8 @@ Technical documentation mirroring the framework layout: shared infrastructure at
 
 ### Build & QA
 - [config/](config/) — hash manifest (`config/hashes.ini`)
-- [scripts/](scripts/) — pre-build automation (`generate_hashes.py`)
-- [tests/](tests/) — integration test runner, PE mutator, fixtures
+- [scripts/](scripts/) — pre-build automation (`generate_hashes.py`, `morph.py`)
+- [tests/](tests/) — integration test runner, test payloads, fixtures
 
 ## Documentation conventions
 

@@ -18,6 +18,7 @@ SND_BEGIN_EXTERN_C
 /**
  * @brief Syscall entry structure holding the address, hash, and syscall number.
  */
+SND_SHUFFLE_START
 typedef struct {
     PVOID pAddress;
     DWORD dwHash;
@@ -26,6 +27,7 @@ typedef struct {
     PVOID pSpoofAddr;
     DWORD dwSpoofFrameSize; // The actual frame size of the Fat Frame in bytes
 } snd_syscall_entry_t;
+SND_SHUFFLE_END
 
 /**
  * @brief Arguments struct passed to the generic ASM syscall invoker.

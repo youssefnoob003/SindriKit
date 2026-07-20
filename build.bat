@@ -11,6 +11,7 @@ set BUILD_CRTLESS=OFF
 set CLEAN_BUILD=OFF
 set RANDOMIZE=OFF
 set USE_DEFAULTS=OFF
+set MORPH_ENGINE=OFF
 
 :parse_args
 if "%~1"=="" goto :done_args
@@ -46,10 +47,13 @@ if /I "%~1"=="debug" (
 ) else if /I "%~1"=="defaults" (
     set CMAKE_FLAGS=%CMAKE_FLAGS% -DSND_USE_DEFAULTS=ON
     set USE_DEFAULTS=ON
+) else if /I "%~1"=="morph" (
+    set CMAKE_FLAGS=%CMAKE_FLAGS% -DSND_MORPH=ON
+    set MORPH_ENGINE=ON
 ) else (
     echo [!] Unknown argument: %~1
     echo.
-    echo Usage: build.bat [debug] [console] [djb2^|fnv1a] [tests] [pocs] [crtless] [clean] [random] [defaults]
+    echo Usage: build.bat [debug] [console] [djb2^|fnv1a] [tests] [pocs] [crtless] [clean] [random] [defaults] [morph]
     echo.
     echo    debug      Enable debug prints  ^(default: silent^)
     echo    console    Use printf output    ^(default: OutputDebugString^)
@@ -61,6 +65,7 @@ if /I "%~1"=="debug" (
     echo    clean      Delete build dirs before compiling
     echo    random     Use randomized seed for compile-time hashes
     echo    defaults   Use sensible defaults for configuration globals
+    echo    morph      Run polymorphic mutation engine before build
     exit /b 1
 )
 shift
@@ -78,6 +83,7 @@ echo [*]   PoCs    : %BUILD_POCS%
 echo [*]   CRTless : %BUILD_CRTLESS%
 echo [*]   Random  : %RANDOMIZE%
 echo [*]   Defaults: %USE_DEFAULTS%
+echo [*]   Morph   : %MORPH_ENGINE%
 echo.
 
 if "%CLEAN_BUILD%"=="ON" (

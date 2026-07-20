@@ -10,6 +10,7 @@
 
 SND_BEGIN_EXTERN_C
 
+SND_SHUFFLE_START
 typedef struct {
     LPVOID local_base;
     LPVOID execution_base;
@@ -22,6 +23,7 @@ typedef struct {
     LPVOID trampolines_base;
     LPVOID bss_base;
 } snd_coff_target_t;
+SND_SHUFFLE_END
 
 typedef enum {
     SND_COFF_STAGE_UNINITIALIZED = 0,
@@ -34,6 +36,7 @@ typedef enum {
     SND_COFF_STAGE_EXECUTED,
 } snd_ldr_coff_stage_t;
 
+SND_SHUFFLE_START
 typedef struct _snd_ldr_coff_ctx {
     const snd_buffer_t  *raw_source;
     snd_coff_parser_t    coff;
@@ -43,6 +46,7 @@ typedef struct _snd_ldr_coff_ctx {
     const snd_memory_api_t *mem_api;
     const snd_module_api_t *mod_api;
 } snd_ldr_coff_ctx_t;
+SND_SHUFFLE_END
 
 /**
  * @brief Allocates memory and copies sections from the parsed COFF.

@@ -29,4 +29,18 @@
 #define SND_FORCE_INLINE static inline __attribute__((always_inline))
 #endif
 
+/**
+ * @def SND_SHUFFLE_START
+ * @brief Marks the start of a block of code to be shuffled by the mutator.
+ * Irrelevant in normal builds.
+ */
+#define SND_SHUFFLE_START
+
+/**
+ * @def SND_SHUFFLE_END
+ * @brief Marks the end of a block of code to be shuffled by the mutator.
+ * Irrelevant in normal builds.
+ */
+#define SND_SHUFFLE_END
+
 #endif // SND_COMMON_MACROS_H

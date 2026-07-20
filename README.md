@@ -29,6 +29,7 @@ By shifting execution mechanics to runtime function pointers, you can swap your 
 * **Decoupled Execution Profiles:** Swap underlying memory, module, and thread manipulation behaviors via function pointer tables without breaking the calling technique.
 * **Cascading Syscall Fallbacks:** Pluggable SSN resolvers (`snd_syscall_resolve_ssn_scan`, `snd_syscall_resolve_ssn_sort`) with a priority chain — swap or extend strategies without touching domain code.
 * **Compile-Time Obfuscation:** String and API hashing algorithms (DJB2, FNV1A) can be swapped globally via CMake. Compiling automatically randomizes the global seed to alter static signatures.
+* **Mutation Engine:** Enables deep polymorphism via `SND_MORPH`. Generates unique binary signatures on every build by injecting volatile opaque predicates into C code, functionally equivalent math/NOPs into Assembly stubs, and scrambling the memory layout of core structs.
 * **Release Builds:** A silent tier strips all diagnostic strings, file descriptors, and tracking frames from the final binary, reducing your static footprint to bare primitives.
 
 ---
@@ -43,6 +44,7 @@ set(SND_BUILD_PAYLOADS  OFF    CACHE BOOL   "")
 set(SND_ENABLE_DEBUG    OFF    CACHE BOOL   "")
 set(SND_HASH_ALGO      "DJB2"  CACHE STRING "")
 set(SND_RANDOMIZE_SEED  ON     CACHE BOOL   "")
+set(SND_MORPH           ON     CACHE BOOL   "")
 
 add_subdirectory(libs/SindriKit)
 
@@ -218,14 +220,6 @@ Full reference under [`docs/`](docs/README.md):
 ## Disclaimer
 
 **SindriKit is built for educational, research, and authorized Red Teaming purposes only.** For the full legal disclaimer and information regarding OpSec considerations, see the [Security Policy](SECURITY.md).
-
----
-
-## Support the Project
-
-SindriKit is open-source and built for the community. If this framework saved you development time or assisted in your research, consider supporting independent offensive R&D:
-
-* **BTC:** `bc1qsm7dsdsqmlwcw3f7uarxgx0mlu8tlxnyd7y2gz`
 
 ---
 

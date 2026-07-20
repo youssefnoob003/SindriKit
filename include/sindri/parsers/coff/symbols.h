@@ -24,11 +24,13 @@ typedef enum {
  * @note The engine extracts these values from specially crafted COFF names
  * like `__imp_DLLNAME$FunctionName`.
  */
+SND_SHUFFLE_START
 typedef struct {
     char dll_name[128];
     char func_name[128];
     BOOL is_imp;
 } snd_coff_import_info_t;
+SND_SHUFFLE_END
 
 /**
  * @brief A standardized container representing a fully decoded COFF symbol.
@@ -36,11 +38,13 @@ typedef struct {
  * @note This structure is populated by `snd_coff_decode_symbol` and safely
  * handles bounded strings to prevent buffer overruns during resolution.
  */
+SND_SHUFFLE_START
 typedef struct {
     snd_coff_sym_type_t    type;
     snd_coff_import_info_t import;
     SIZE_T                 bss_size;
 } snd_coff_decoded_sym_t;
+SND_SHUFFLE_END
 
 /**
  * @brief Retrieves a symbol by its zero-based index in the symbol table.

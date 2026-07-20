@@ -55,6 +55,7 @@ SND_BEGIN_EXTERN_C
  * and their lifecycles are tied entirely to the validity of the underlying
  * `source`.
  */
+SND_SHUFFLE_START
 typedef struct {
     snd_buffer_t source; // Backing buffer containing the raw or mapped PE data.
 
@@ -90,6 +91,7 @@ typedef struct {
     DWORD imports_rva;
     DWORD import_size;
 } snd_pe_parser_t;
+SND_SHUFFLE_END
 
 /**
  * @brief Parses a raw or mapped PE file buffer into a parsed PE representation.

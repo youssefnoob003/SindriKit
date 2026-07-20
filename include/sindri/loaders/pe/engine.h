@@ -10,6 +10,7 @@
 
 SND_BEGIN_EXTERN_C
 
+SND_SHUFFLE_START
 typedef struct {
     LPVOID   local_base;
     LPVOID   execution_base;
@@ -17,6 +18,7 @@ typedef struct {
     LPVOID   entry_point;
     SIZE_T   allocated_size;
 } snd_pe_target_t;
+SND_SHUFFLE_END
 
 typedef enum {
     SND_STAGE_UNINITIALIZED = 0,
@@ -29,6 +31,7 @@ typedef enum {
     SND_STAGE_EXECUTED,
 } snd_ldr_pe_stage_t;
 
+SND_SHUFFLE_START
 typedef struct _snd_ldr_pe_ctx {
     const snd_buffer_t *raw_source;
     snd_pe_parser_t     pe;
@@ -39,6 +42,7 @@ typedef struct _snd_ldr_pe_ctx {
     const snd_module_api_t *mod_api;
 
 } snd_ldr_pe_ctx_t;
+SND_SHUFFLE_END
 
 /**
  * @brief Portable macro to resolve and call a pely loaded DLL export

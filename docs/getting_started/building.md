@@ -62,6 +62,7 @@ Include `sindri.h` or granular headers (`sindri/primitives.h`, etc.). Hash const
 | `SND_RANDOMIZE_SEED` | `OFF` | Random `SND_HASH_SEED` per configure | OFF keeps deterministic hashes for faster rebuilds |
 | `SND_BUILD_PAYLOADS` | `OFF` | Build `pocs/` executables | Full set when `SND_CRTLESS=OFF` |
 | `SND_BUILD_TESTS` | `OFF` | Build test payloads + integration harness inputs | **Requires CRT**; forces `SND_CRTLESS=OFF` |
+| `SND_MORPH` | `OFF` | Enables the mutation engine | Polymorphic C/ASM mutations + struct shuffling. See [mutator.md](../scripts/mutator.md). |
 | `SND_USE_DEFAULTS` | `OFF` | Pre-configure syscall invoker, gadget finder, and resolver globals | Defaults to indirect invoke + scan resolver + gadget scan. **OpSec note**: Left OFF by default so unused ASM stubs and scanners aren't linked into the final binary. |
 
 ### Guards (CMake)

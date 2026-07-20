@@ -42,15 +42,18 @@ typedef snd_status_t(WINAPI *snd_process_close_cb)(HANDLE handle);
 /**
  * @brief Local Memory Management API table.
  */
+SND_SHUFFLE_START
 typedef struct {
     snd_memory_alloc_cb   alloc;
     snd_memory_free_cb    free;
     snd_memory_protect_cb protect;
 } snd_memory_api_t;
+SND_SHUFFLE_END
 
 /**
  * @brief Module and Import Resolution API table.
  */
+SND_SHUFFLE_START
 typedef struct {
     // String-based resolution
     snd_module_load_cb     load_library;
@@ -61,19 +64,23 @@ typedef struct {
     snd_module_get_proc_hash_cb get_proc_address_hash;
     snd_module_resolver_hash_cb get_module_base_hash;
 } snd_module_api_t;
+SND_SHUFFLE_END
 
 /**
  * @brief Mapping API table.
  */
+SND_SHUFFLE_START
 typedef struct {
     snd_mapping_open_cb  open;
     snd_mapping_view_cb  view;
     snd_mapping_close_cb close;
 } snd_mapping_api_t;
+SND_SHUFFLE_END
 
 /**
  * @brief Remote Process Operations API table.
  */
+SND_SHUFFLE_START
 typedef struct {
     snd_process_open_cb           open_process;
     snd_process_alloc_remote_cb   alloc_remote;
@@ -82,6 +89,7 @@ typedef struct {
     snd_process_create_thread_cb  create_remote_thread;
     snd_process_close_cb          close_handle;
 } snd_process_api_t;
+SND_SHUFFLE_END
 
 SND_END_EXTERN_C
 
