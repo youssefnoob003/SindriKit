@@ -22,16 +22,24 @@ flowchart TB
     end
 
     subgraph future ["Future techniques"]
-        APC["APC queue …"]
         HIJ["Thread hijack …"]
+    end
+
+    subgraph apc ["APC technique (implemented)"]
+        AENG["snd_inj_apc_* engine"]
+        ASH["snd_inj_apc_shell"]
+        APE["snd_inj_apc_pe"]
     end
 
     CTX --> ENG
     ENG --> SH
     ENG --> PE
-    CTX -.-> APC
+    CTX --> AENG
+    AENG --> ASH
+    AENG --> APE
     CTX -.-> HIJ
     PROC --> ENG
+    PROC --> AENG
 ```
 
 Future techniques will add their own engine headers (e.g. `injection/apc/engine.h`) but continue to mutate the same `snd_inj_ctx_t`. Technique-specific metadata, if ever needed, lives in technique-local structures passed alongside the shared context — not in a forked injection context type.
@@ -47,9 +55,9 @@ Future techniques will add their own engine headers (e.g. `injection/apc/engine.
 | `SND_INJ_STAGE_MEMORY_ALLOCATED` | `snd_inj_classic_alloc_remote` | RW region reserved in remote process |
 | `SND_INJ_STAGE_PAYLOAD_WRITTEN` | `snd_inj_classic_write_payload` | Payload bytes copied remotely |
 | `SND_INJ_STAGE_PROTECTIONS_SET` | `snd_inj_classic_set_protections` | Remote region transitioned to RX |
-| `SND_INJ_STAGE_EXECUTED` | `snd_inj_classic_execute` | Remote thread created |
+| `SND_INJ_STAGE_EXECUTED` | `snd_inj_classic_execute` / `snd_inj_apc_execute` | Remote thread created / Thread resumed |
 
-Each engine function validates the current stage and returns `SND_STATUS_INVALID_STAGE_SEQUENCE` on mismatch. This ordering is enforced for all classic paths and will be reused by future techniques that build on the same remote write/execute primitives.
+Each engine function validates the current stage and returns `SND_STATUS_INVALID_STAGE_SEQUENCE` on mismatch. This ordering is enforced for all classic and apc paths and will be reused by future techniques that build on the same remote write/execute primitives.
 
 ---
 
@@ -71,7 +79,7 @@ The baseline **Alloc → Write → Protect → Execute** pattern. The payload bu
 - The shellcode path does not parse PE structures or touch the loader domain.
 - Backend choice (`snd_proc_win` / `_nt` / `_sys`) determines telemetry surface — see [process primitives](../primitives/process/techniques.md).
 
-### Example (`pocs/inject_shell/main.c`)
+### Example (`pocs/inject_classic/main.c`)
 
 ```c
 snd_inj_ctx_t inj_ctx = {0};
@@ -119,7 +127,7 @@ The PE chain deliberately interleaves loader and injection stages so relocations
 
 For DLL payloads, the remote thread starts at `AddressOfEntryPoint` (the DLL entry symbol, typically `DllMain`) with **`NULL` thread parameter** — not a typed `DllMain(hinst, DLL_PROCESS_ATTACH, NULL)` call. Do not assume `DLL_PROCESS_ATTACH` semantics; this differs from local `snd_ldr_pe_execute_image` in `chain.c`.
 
-### Example (`pocs/inject_pe/main.c`)
+### Example (`pocs/inject_classic/main.c`)
 
 ```c
 snd_ldr_pe_ctx_t ldr_ctx = {0};
@@ -165,7 +173,7 @@ The COFF chain relies on allocating a remote buffer that is large enough to hold
 - **Arguments passing:** The arguments buffer is appended to the payload memory. `create_remote_thread` is invoked with `lpParameter` pointing to this remote argument buffer, adhering to the BOF argument convention `(char *args, int arg_len)`.
 - **Relocations & Trampolines:** Because COFF payloads might call Windows API via `mod_api`, any absolute addresses injected during symbol resolution are automatically relocated to be accurate when the image lands in the remote memory space.
 
-### Example (`pocs/inject_coff/main.c`)
+### Example (`pocs/inject_classic/main.c`)
 
 ```c
 snd_ldr_coff_ctx_t ldr_ctx = {0};
@@ -186,7 +194,36 @@ snd_inj_cleanup(&inj_ctx);
 
 ## Cleanup
 
-`snd_inj_cleanup` closes `remote_thread` and `target_process` via `proc_api->close_handle`, clears remote fields, and resets stage to `UNINITIALIZED`. It does not free the local loader mapping — callers manage `snd_ldr_pe_free_mapped_image` separately if a local `snd_ldr_pe_ctx_t` was used.
+`snd_inj_cleanup` closes `remote_thread` and `target_process` via `proc_api->close_handle`, clears remote fields, and resets stage to `UNINITIALIZED`. It does not free the local loader mapping — callers manage `snd_ldr_pe_free_mapped_image` separately if a local `snd_ldr_pe_ctx_t` or `snd_ldr_coff_ctx_t` was used.
+
+---
+
+## APC Technique: Early Bird (`snd_inj_apc_*`)
+
+The APC technique queue an APC to an alertable thread. Currently implemented via the "Early Bird" pattern: creating a suspended process, queuing an APC to its main thread, and resuming the thread.
+
+### Pipeline
+
+1. **Open target** — `proc_api->create_process(target_image_path, NULL, &target_process, &remote_thread)`
+2. **Allocate remote** — remote RW region
+3. **Write payload** — `proc_api->write_remote` copies the payload
+4. **Protect** — `PAGE_EXECUTE_READ` over the entire allocation
+5. **Execute** — `thread_api->queue_apc_thread` to queue the APC, then `thread_api->resume_thread` to resume the suspended thread and trigger the APC
+
+For PE and COFF paths, the loader steps (parse, local map, relocate, resolve) are interleaved identically to the classic paths, using the same loader contexts (`snd_ldr_pe_ctx_t` or `snd_ldr_coff_ctx_t`).
+
+### Example (`pocs/inject_apc/main.c`)
+
+```c
+snd_inj_ctx_t inj_ctx = {0};
+inj_ctx.target_image_path = target_image_path;
+inj_ctx.payload    = &shellcode_buf;
+inj_ctx.proc_api   = &snd_proc_nt;
+inj_ctx.thread_api = &snd_thread_nt;
+
+snd_status_t status = snd_inj_apc_shell(&inj_ctx);
+snd_inj_cleanup(&inj_ctx);
+```
 
 ---
 
@@ -196,7 +233,6 @@ Future injection techniques will reuse `snd_inj_ctx_t` and `proc_api`:
 
 | Technique | Description |
 |---|---|
-| **APC queue** | Queue user APC to an alertable thread via `NtQueueApcThread` |
 | **Thread hijack** | Suspend thread, rewrite context, resume |
 | **Process hollowing** | Replace remote image in situ (loader + injection coordination) |
 

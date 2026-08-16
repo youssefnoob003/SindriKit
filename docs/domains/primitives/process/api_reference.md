@@ -24,12 +24,24 @@ Function pointer table defining the remote process operations contract.
 
 | Field | Signature | Description |
 |---|---|---|
+| `create_process` | `snd_status_t (*)(const wchar_t *image_path, const wchar_t *command_line, HANDLE *out_process, HANDLE *out_thread)` | Creates a process |
 | `open_process` | `snd_status_t (*)(DWORD pid, DWORD desired_access, HANDLE *out_process)` | Opens a handle to the target process |
 | `alloc_remote` | `snd_status_t (*)(HANDLE process, SIZE_T size, DWORD alloc_type, DWORD protect, PVOID *out_address)` | Allocates memory in the remote process |
 | `write_remote` | `snd_status_t (*)(HANDLE process, PVOID base, const void *buffer, SIZE_T size, SIZE_T *bytes_written)` | Writes data into the remote process |
 | `protect_remote` | `snd_status_t (*)(HANDLE process, PVOID base, SIZE_T size, DWORD new_protect, DWORD *old_protect)` | Changes memory protections in the remote process |
 | `create_remote_thread` | `snd_status_t (*)(HANDLE process, PVOID start, PVOID param, HANDLE *out_thread)` | Creates a thread in the remote process |
 | `close_handle` | `snd_status_t (*)(HANDLE handle)` | Closes a handle |
+
+#### `create_process`
+
+| Parameter | Description |
+|---|---|
+| `image_path` | Target image path |
+| `command_line` | Command line to execute |
+| `out_process` | Receives the process handle on success |
+| `out_thread` | Receives the thread handle on success |
+
+**Status codes:** `SND_STATUS_PROCESS_OPEN_FAILED`, `SND_STATUS_INVALID_PARAMETER`
 
 #### `open_process`
 
@@ -100,6 +112,19 @@ Closes a process or thread handle. The NT backend treats a `NULL` handle as succ
 
 ---
 
+### `snd_thread_api_t`
+
+Function pointer table defining the thread operations contract.
+
+| Field | Signature | Description |
+|---|---|---|
+| `queue_apc` | `snd_status_t (*)(HANDLE thread, PVOID apc_routine, PVOID apc_argument)` | Queues an APC to the target thread |
+| `resume_thread` | `snd_status_t (*)(HANDLE thread)` | Resumes the target thread |
+| `suspend_thread` | `snd_status_t (*)(HANDLE thread)` | Suspends the target thread |
+| `close_handle` | `snd_status_t (*)(HANDLE handle)` | Closes a handle |
+
+---
+
 ## Injection Context (`sindri/injection/context.h`)
 
 Process backends are injected into the injection context:
@@ -115,6 +140,8 @@ typedef struct _snd_inj_ctx_t {
     snd_inj_stage_t stage;
     const snd_buffer_t      *payload;
     const snd_process_api_t *proc_api;
+    const snd_thread_api_t  *thread_api;
+    const wchar_t           *target_image_path;
 } snd_inj_ctx_t;
 ```
 

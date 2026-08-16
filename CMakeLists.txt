@@ -141,6 +141,8 @@ add_library(sindri_engine STATIC
     ${SND_SRC_DIR}/injection/context.c
     ${SND_SRC_DIR}/injection/classic/engine.c
     ${SND_SRC_DIR}/injection/classic/chain.c
+    ${SND_SRC_DIR}/injection/apc/engine.c
+    ${SND_SRC_DIR}/injection/apc/chain.c
     # Memory primitives
     ${SND_SRC_DIR}/primitives/memory/win.c
     ${SND_SRC_DIR}/primitives/memory/sys.c
@@ -156,6 +158,10 @@ add_library(sindri_engine STATIC
     ${SND_SRC_DIR}/primitives/process/win.c
     ${SND_SRC_DIR}/primitives/process/sys.c
     ${SND_SRC_DIR}/primitives/process/nt.c
+    # Thread primitives
+    ${SND_SRC_DIR}/primitives/thread/win.c
+    ${SND_SRC_DIR}/primitives/thread/sys.c
+    ${SND_SRC_DIR}/primitives/thread/nt.c
     # Object manager
     ${SND_SRC_DIR}/primitives/object_manager/knowndlls.c
     # Execution

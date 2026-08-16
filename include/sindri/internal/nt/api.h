@@ -70,6 +70,22 @@ typedef NTSTATUS(NTAPI *SND_NtCreateThreadEx_t)(HANDLE *ThreadHandle, ACCESS_MAS
                                                 ULONG CreateFlags, SIZE_T ZeroBits, SIZE_T StackSize,
                                                 SIZE_T MaximumStackSize, PVOID AttributeList);
 
+/*
+ * @brief Type definition for NtQueueApcThread function.
+ */
+typedef NTSTATUS(NTAPI *SND_NtQueueApcThread_t)(HANDLE ThreadHandle, PVOID ApcRoutine, PVOID ApcRoutineContext,
+                                                PVOID ApcStatusBlock, PVOID ApcReserved);
+
+/*
+ * @brief Type definition for NtResumeThread function.
+ */
+typedef NTSTATUS(NTAPI *SND_NtResumeThread_t)(HANDLE ThreadHandle, PULONG PreviousSuspendCount);
+
+/*
+ * @brief Type definition for NtSuspendThread function.
+ */
+typedef NTSTATUS(NTAPI *SND_NtSuspendThread_t)(HANDLE ThreadHandle, PULONG PreviousSuspendCount);
+
 SND_END_EXTERN_C
 
 #endif // SND_INTERNAL_NT_API_H

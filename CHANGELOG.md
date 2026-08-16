@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [1.6.0] - 2026-08-16
+
+Seventh major release. The framework introduces the Early Bird APC Injection technique, new thread-level primitives, and a consolidation of Proof-of-Concept implementations.
+
+### Major Additions
+- **APC Injection Engine (`snd_inj_apc_*`)**: Implemented the Early Bird APC injection technique. Supports queueing user APCs to a suspended process's main thread and resuming it. Features full support for Shellcode, PE, and COFF payloads via `snd_inj_apc_shell`, `snd_inj_apc_pe`, and `snd_inj_apc_coff`.
+- **Thread Operations API (`snd_thread_api_t`)**: Added a new primitive interface for remote thread manipulation. Includes capabilities for queueing APCs (`queue_apc`), resuming (`resume_thread`), and suspending threads (`suspend_thread`).
+- **Process Creation Primitive**: Expanded the `snd_process_api_t` interface with `create_process` to support creating suspended targets for APC injection.
+- **Unified PoC Architecture**: Consolidated scattered injection examples into robust `inject_classic` and `inject_apc` tools. Both PoCs now feature a CLI that dynamically dispatches to Shellcode, PE, or COFF pipelines based on user arguments.
+
+### Fixed
+- **PE Parser Stability**: Fixed a critical unsigned integer underflow in `snd_pe_rva_to_ptr` that caused an out-of-bounds memory access if a virtual address did not map to any valid PE section.
+
 ## [1.5.0] - 2026-07-20
 
 Sixth major release. The framework introduces the SindriKit Mutation Engine (`SND_MORPH`), a pre-build pipeline that injects structural and instruction-level polymorphism into the compiled binary dynamically.

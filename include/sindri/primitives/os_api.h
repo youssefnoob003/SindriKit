@@ -28,6 +28,8 @@ typedef snd_status_t(WINAPI *snd_mapping_view_cb)(HANDLE section_handle, PVOID *
 typedef snd_status_t(WINAPI *snd_mapping_close_cb)(HANDLE handle);
 
 // Process Capabilities
+typedef snd_status_t(WINAPI *snd_process_create_cb)(const wchar_t *image_path, const wchar_t *command_line,
+                                                    HANDLE *out_process, HANDLE *out_thread);
 typedef snd_status_t(WINAPI *snd_process_open_cb)(DWORD pid, DWORD desired_access, HANDLE *out_process);
 typedef snd_status_t(WINAPI *snd_process_alloc_remote_cb)(HANDLE process, SIZE_T size, DWORD allocation_type,
                                                           DWORD protect, PVOID *out_address);
@@ -38,6 +40,12 @@ typedef snd_status_t(WINAPI *snd_process_protect_remote_cb)(HANDLE process, PVOI
 typedef snd_status_t(WINAPI *snd_process_create_thread_cb)(HANDLE process, PVOID start_address, PVOID parameter,
                                                            HANDLE *out_thread);
 typedef snd_status_t(WINAPI *snd_process_close_cb)(HANDLE handle);
+
+// Thread Capabilities
+typedef snd_status_t(WINAPI *snd_thread_queue_apc_cb)(HANDLE thread, PVOID apc_routine, PVOID apc_argument);
+typedef snd_status_t(WINAPI *snd_thread_resume_cb)(HANDLE thread);
+typedef snd_thread_resume_cb snd_thread_suspend_cb;
+typedef snd_process_close_cb snd_thread_close_cb;
 
 /**
  * @brief Local Memory Management API table.
@@ -82,6 +90,7 @@ SND_SHUFFLE_END
  */
 SND_SHUFFLE_START
 typedef struct {
+    snd_process_create_cb         create_process;
     snd_process_open_cb           open_process;
     snd_process_alloc_remote_cb   alloc_remote;
     snd_process_write_remote_cb   write_remote;
@@ -89,6 +98,18 @@ typedef struct {
     snd_process_create_thread_cb  create_remote_thread;
     snd_process_close_cb          close_handle;
 } snd_process_api_t;
+SND_SHUFFLE_END
+
+/**
+ * @brief Thread Operations API table.
+ */
+SND_SHUFFLE_START
+typedef struct {
+    snd_thread_queue_apc_cb queue_apc;
+    snd_thread_resume_cb    resume_thread;
+    snd_thread_suspend_cb   suspend_thread;
+    snd_thread_close_cb     close_handle;
+} snd_thread_api_t;
 SND_SHUFFLE_END
 
 SND_END_EXTERN_C

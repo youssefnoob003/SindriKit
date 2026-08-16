@@ -183,6 +183,85 @@ The orchestrator allocates a remote buffer large enough for both the COFF sectio
 
 ---
 
+---
+
+## APC Engine (`sindri/injection/apc/engine.h`)
+
+Per-stage functions with strict stage validation for the APC technique.
+
+| Function | Required stage | `proc_api` / `thread_api` callback | Advances to |
+|---|---|---|---|
+| `snd_inj_apc_open_target` | `UNINITIALIZED` | `create_process` | `TARGET_ACQUIRED` |
+| `snd_inj_apc_alloc_remote` | `TARGET_ACQUIRED` | `alloc_remote` | `MEMORY_ALLOCATED` |
+| `snd_inj_apc_write_payload` | `MEMORY_ALLOCATED` | `write_remote` | `PAYLOAD_WRITTEN` |
+| `snd_inj_apc_set_protections` | `PAYLOAD_WRITTEN` | `protect_remote` | `PROTECTIONS_SET` |
+| `snd_inj_apc_execute` | `PROTECTIONS_SET` | `queue_apc`, `resume_thread` | `EXECUTED` |
+
+---
+
+## APC Chain (`sindri/injection/apc/chain.h`)
+
+### `snd_inj_apc_shell`
+
+Runs the full shellcode pipeline for APC injection: open → alloc → write → protect → queue apc → execute.
+
+```c
+snd_status_t snd_inj_apc_shell(snd_inj_ctx_t *ctx);
+```
+
+| Parameter | Description |
+|---|---|
+| `ctx` | Context with `target_image_path`, `payload`, `proc_api` and `thread_api` set |
+
+**Returns:** `SND_OK` or the failing stage's status
+
+**Source:** `src/injection/apc/chain.c`
+
+---
+
+### `snd_inj_apc_pe`
+
+Orchestrates local PE preparation via `snd_ldr_pe_ctx_t` and remote injection via `snd_inj_ctx_t`.
+
+```c
+snd_status_t snd_inj_apc_pe(snd_ldr_pe_ctx_t *ldr_ctx, snd_inj_ctx_t *inj_ctx);
+```
+
+| Parameter | Description |
+|---|---|
+| `ldr_ctx` | Loader context with `raw_source`, `mem_api`, and `mod_api` set |
+| `inj_ctx` | Injection context with `target_image_path`, `proc_api`, and `thread_api` set |
+
+On success, `inj_ctx` reaches `SND_INJ_STAGE_EXECUTED`.
+
+**Returns:** `SND_OK` or the failing loader/injection stage status
+
+**Source:** `src/injection/apc/chain.c`
+
+---
+
+### `snd_inj_apc_coff`
+
+Orchestrates local COFF preparation via `snd_ldr_coff_ctx_t` and remote injection via `snd_inj_ctx_t`.
+
+```c
+snd_status_t snd_inj_apc_coff(snd_ldr_coff_ctx_t *ldr_ctx, snd_inj_ctx_t *inj_ctx, const char *entry_point, void *args, int arg_len);
+```
+
+| Parameter | Description |
+|---|---|
+| `ldr_ctx` | Loader context with `raw_source`, `mem_api`, and `mod_api` set |
+| `inj_ctx` | Injection context with `target_image_path`, `proc_api`, and `thread_api` set |
+| `entry_point` | The COFF symbol name to execute (e.g., `"go"`) |
+| `args` | Buffer of BOF arguments to pass to the entry point |
+| `arg_len` | Length of the arguments buffer |
+
+The orchestrator allocates a remote buffer large enough for both the COFF sections and the arguments. It passes the remote arguments address to the entry point.
+
+**Returns:** `SND_OK` or failing stage status
+
+**Source:** `src/injection/apc/chain.c`
+
 ## Related Documentation
 
 - [Loader API](../loaders/api_reference.md) — `snd_ldr_pe_ctx_t` and `snd_ldr_coff_ctx_t`

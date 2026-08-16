@@ -32,6 +32,8 @@ typedef struct _snd_inj_ctx_t {
 
     const snd_buffer_t      *payload;
     const snd_process_api_t *proc_api;
+    const snd_thread_api_t  *thread_api;
+    const wchar_t           *target_image_path;
 } snd_inj_ctx_t;
 SND_SHUFFLE_END
 

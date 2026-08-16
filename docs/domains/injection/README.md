@@ -11,9 +11,12 @@ Each technique adds engine functions and chains under a subdirectory but mutates
 ```
 include/sindri/injection/
 ├── context.h           <- shared across ALL techniques
-└── classic/
-    ├── engine.h        <- per-stage classic engine
-    └── chain.h         <- snd_inj_classic_shell, snd_inj_classic_pe
+├── classic/
+│   ├── engine.h        <- per-stage classic engine
+│   └── chain.h         <- snd_inj_classic_shell, snd_inj_classic_pe, snd_inj_classic_coff
+└── apc/
+    ├── engine.h        <- per-stage apc engine
+    └── chain.h         <- snd_inj_apc_shell, snd_inj_apc_pe, snd_inj_apc_coff
 ```
 
 Loader contexts are **per-technique** (`snd_ldr_pe_ctx_t` today).
@@ -27,6 +30,9 @@ Loader contexts are **per-technique** (`snd_ldr_pe_ctx_t` today).
 | `sindri/injection/classic.h` | Classic technique umbrella |
 | `sindri/injection/classic/engine.h` | Per-stage engine functions |
 | `sindri/injection/classic/chain.h` | `snd_inj_classic_shell`, `snd_inj_classic_pe`, `snd_inj_classic_coff` |
+| `sindri/injection/apc.h` | APC technique umbrella |
+| `sindri/injection/apc/engine.h` | Per-stage apc engine functions |
+| `sindri/injection/apc/chain.h` | `snd_inj_apc_shell`, `snd_inj_apc_pe`, `snd_inj_apc_coff` |
 
 ## Implemented techniques
 
@@ -35,14 +41,16 @@ Loader contexts are **per-technique** (`snd_ldr_pe_ctx_t` today).
 | Classic shellcode | `snd_inj_classic_shell` | Raw buffer in `inj_ctx.payload` |
 | Classic PE | `snd_inj_classic_pe` | Local bake + remote execute (requires `snd_ldr_pe_ctx_t`) |
 | Classic COFF | `snd_inj_classic_coff` | Local bake + remote execute (requires `snd_ldr_coff_ctx_t`) |
+| APC shellcode | `snd_inj_apc_shell` | Raw buffer in `inj_ctx.payload` |
+| APC PE | `snd_inj_apc_pe` | Local bake + remote APC execute (requires `snd_ldr_pe_ctx_t`) |
+| APC COFF | `snd_inj_apc_coff` | Local bake + remote APC execute (requires `snd_ldr_coff_ctx_t`) |
 
 ## PoCs
 
 | PoC | Chain | Profile |
 |---|---|---|
-| `pocs/inject_shell/main.c` | `snd_inj_classic_shell` | KnownDlls bootstrap + `snd_proc_win` |
-| `pocs/inject_pe/main.c` | `snd_inj_classic_pe` | `snd_mem_sys`, `snd_mod_nt`, `snd_proc_sys` |
-| `pocs/inject_coff/main.c` | `snd_inj_classic_coff` | `snd_mem_sys`, `snd_mod_nt`, `snd_proc_nt` |
+| `pocs/inject_classic/main.c` | `snd_inj_classic_*` | `snd_mem_sys`, `snd_mod_nt`, `snd_proc_sys` (multi-mode) |
+| `pocs/inject_apc/main.c` | `snd_inj_apc_*` | `snd_mem_sys`, `snd_mod_nt`, `snd_proc_nt`, `snd_thread_nt` (multi-mode) |
 
 ## Table of Contents
 

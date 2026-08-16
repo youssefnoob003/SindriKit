@@ -2,6 +2,40 @@
 #include <sindri/primitives/process.h>
 #include <windows.h>
 
+static snd_status_t WINAPI win_create_process(const wchar_t *image_path, const wchar_t *command_line,
+                                              HANDLE *out_process, HANDLE *out_thread) {
+    if (!out_process || !out_thread)
+        return SND_ERR(SND_STATUS_NULL_POINTER);
+
+    STARTUPINFOW si         = {0};
+    si.cb                   = sizeof(si);
+    PROCESS_INFORMATION pi  = {0};
+    
+    // Create process in a suspended state for APC queuing
+    DWORD creation_flags = CREATE_SUSPENDED;
+
+    BOOL ok = CreateProcessW(
+        image_path,
+        (LPWSTR)command_line,
+        NULL,
+        NULL,
+        FALSE,
+        creation_flags,
+        NULL,
+        NULL,
+        &si,
+        &pi
+    );
+
+    if (!ok)
+        return SND_ERR_W32(SND_STATUS_PROCESS_OPEN_FAILED); // REUSE OPEN_FAILED FOR NOW
+
+    *out_process = pi.hProcess;
+    *out_thread = pi.hThread;
+    
+    return SND_OK;
+}
+
 static snd_status_t WINAPI win_open_process(DWORD pid, DWORD desired_access, HANDLE *out_process) {
     if (!out_process)
         return SND_ERR(SND_STATUS_NULL_POINTER);
@@ -47,7 +81,8 @@ static snd_status_t WINAPI win_close_handle(HANDLE handle) {
     return CloseHandle(handle) ? SND_OK : SND_ERR(SND_STATUS_HANDLE_CLOSE_FAILED);
 }
 
-const snd_process_api_t snd_proc_win = {.open_process         = win_open_process,
+const snd_process_api_t snd_proc_win = {.create_process       = win_create_process,
+                                        .open_process         = win_open_process,
                                         .alloc_remote         = win_alloc_remote,
                                         .write_remote         = win_write_remote,
                                         .protect_remote       = win_protect_remote,

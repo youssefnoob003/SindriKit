@@ -69,7 +69,7 @@ The injection engine progresses through discrete stages (`SND_INJ_STAGE_*`), cal
 5. `create_remote_thread` — execute the entry point
 6. `close_handle` — release process and thread handles via `snd_inj_cleanup`
 
-A typical full-stealth profile (`pocs/inject_pe/main.c`):
+A typical full-stealth profile (`pocs/inject_classic/main.c`):
 
 1. Map clean `ntdll.dll` from KnownDlls (`snd_om_knowndll_map` + `snd_map_nt`)
 2. Bootstrap syscalls with the mapped base

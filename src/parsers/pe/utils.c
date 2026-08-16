@@ -56,7 +56,7 @@ PVOID snd_pe_rva_to_ptr(const snd_pe_parser_t *parser, DWORD rva, SIZE_T size) {
     DWORD section_alignment = SND_PE_GET_NT_FIELD(parser, OptionalHeader.SectionAlignment);
     DWORD file_alignment    = SND_PE_GET_NT_FIELD(parser, OptionalHeader.FileAlignment);
 
-    for (DWORD i = parser->sections_count - 1; i >= 0; i--) {
+    for (int i = (int)parser->sections_count - 1; i >= 0; i--) {
         PIMAGE_SECTION_HEADER section    = &parser->section_head[i];
         DWORD                 aligned_va = section->VirtualAddress;
         if (section_alignment >= SND_PAGE_SIZE) {

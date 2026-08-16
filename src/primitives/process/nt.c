@@ -9,6 +9,42 @@
 #include <windows.h>
 #include <winerror.h>
 
+static snd_status_t WINAPI nt_create_process(const wchar_t *image_path, const wchar_t *command_line,
+                                             HANDLE *out_process, HANDLE *out_thread) {
+    if (!out_process || !out_thread)
+        return SND_ERR(SND_STATUS_NULL_POINTER);
+
+    STARTUPINFOW si         = {0};
+    si.cb                   = sizeof(si);
+    PROCESS_INFORMATION pi  = {0};
+    
+    // Create process in a suspended state for APC queuing
+    // Note: NtCreateUserProcess is too volatile/undocumented across OS builds,
+    // so we fall back to the Win32 subsystem for process creation even in the NT backend.
+    DWORD creation_flags = CREATE_SUSPENDED;
+
+    BOOL ok = CreateProcessW(
+        image_path,
+        (LPWSTR)command_line,
+        NULL,
+        NULL,
+        FALSE,
+        creation_flags,
+        NULL,
+        NULL,
+        &si,
+        &pi
+    );
+
+    if (!ok)
+        return SND_ERR_W32(SND_STATUS_PROCESS_OPEN_FAILED); // REUSE OPEN_FAILED FOR NOW
+
+    *out_process = pi.hProcess;
+    *out_thread = pi.hThread;
+    
+    return SND_OK;
+}
+
 static snd_status_t WINAPI nt_open_process(DWORD pid, DWORD desired_access, HANDLE *out_process) {
     if (!out_process)
         return SND_ERR(SND_STATUS_NULL_POINTER);
@@ -156,7 +192,8 @@ static snd_status_t WINAPI nt_close_handle(HANDLE handle) {
     return SND_NT_SUCCESS(nt_status) ? SND_OK : SND_ERR_NT(SND_STATUS_HANDLE_CLOSE_FAILED, nt_status);
 }
 
-const snd_process_api_t snd_proc_nt = {.open_process         = nt_open_process,
+const snd_process_api_t snd_proc_nt = {.create_process       = nt_create_process,
+                                       .open_process         = nt_open_process,
                                        .alloc_remote         = nt_alloc_remote,
                                        .write_remote         = nt_write_remote,
                                        .protect_remote       = nt_protect_remote,

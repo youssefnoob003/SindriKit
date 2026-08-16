@@ -170,6 +170,12 @@ const char *snd_status_to_string(snd_status_t status) {
         return "Thread create failed";
     case SND_STATUS_VIRTUAL_FREE_FAILED:
         return "Virtual free failed";
+    case SND_STATUS_APC_QUEUE_FAILED:
+        return "Failed to queue APC";
+    case SND_STATUS_THREAD_RESUME_FAILED:
+        return "Failed to resume thread";
+    case SND_STATUS_THREAD_SUSPEND_FAILED:
+        return "Failed to suspend thread";
 
     // Remote process errors
     case SND_STATUS_ACCESS_DENIED:

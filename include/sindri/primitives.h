@@ -10,5 +10,6 @@
 #include <sindri/primitives/os_api.h>
 #include <sindri/primitives/process.h>
 #include <sindri/primitives/syscalls.h>
+#include <sindri/primitives/thread.h>
 
 #endif // SND_PRIMITIVES_H
