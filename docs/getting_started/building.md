@@ -9,22 +9,21 @@ cmake -B build -DSND_BUILD_PAYLOADS=ON
 cmake --build build --config Release
 ```
 
+The payload option now builds one unified command-line PoC rather than separate loader and injection executables.
+
 Outputs (MSVC multi-config):
 
-| PoC | Path |
+| Target | Path |
 |---|---|
-| `loader_winapi` | `build/pocs/loader_winapi/Release/` |
-| `loader_nowinapi` | `build/pocs/loader_nowinapi/Release/` |
-| `inject_pe` | `build/pocs/inject_pe/Release/` |
-| `inject_shell` | `build/pocs/inject_shell/Release/` |
-| `heavens_gate` | `build/pocs/heavens_gate/Release/` (requires **x86** / `-A Win32`) |
+| `unified` | `build/pocs/Release/unified.exe` |
 
-CRT-less single PoC:
+CRT-less builds compile the same `unified` command implementation with a different frontend. The CRT-less target has no CRT, console output, or Windows SDK dependency; it reads the process command line through the PEB and dispatches the shared commands through native Sindri backends:
 
 ```bash
 cmake -B build -DSND_CRTLESS=ON -DSND_ENABLE_DEBUG=OFF -DSND_BUILD_PAYLOADS=ON
 cmake --build build --config Release
-# → build/pocs/loader_noCRT_nowinapi/Release/
+# → build/pocs/Release/unified.exe
+# → build/Release/sindri_engine.lib
 ```
 
 See [Examples](../examples/README.md) for usage.
@@ -57,10 +56,10 @@ Include `sindri.h` or granular headers (`sindri/primitives.h`, etc.). Hash const
 |---|---|---|---|
 | `SND_ENABLE_DEBUG` | `OFF` | Verbose status context, `SND_DEBUG_PRINT`, stage traces | Pulls in `<stdio.h>` when ON |
 | `SND_USE_PRINTF` | `OFF` | Route debug to `stdout` instead of `OutputDebugStringA` | Requires `SND_ENABLE_DEBUG=ON` and CRT |
-| `SND_CRTLESS` | `OFF` | CRT manifest fallbacks; `/NODEFAULTLIB`-friendly | Force-disables DEBUG/PRINTF; only builds `loader_noCRT_nowinapi` PoC |
+| `SND_CRTLESS` | `OFF` | CRT manifest fallbacks; `/NODEFAULTLIB`-friendly | Force-disables DEBUG/PRINTF; switches `unified` to the SDK-free frontend/native backend profile |
 | `SND_HASH_ALGO` | `DJB2` | Compile-time hash algorithm (`DJB2`, `FNV1A`) | Regenerates `sindri_hashes.h` at configure |
 | `SND_RANDOMIZE_SEED` | `OFF` | Random `SND_HASH_SEED` per configure | OFF keeps deterministic hashes for faster rebuilds |
-| `SND_BUILD_PAYLOADS` | `OFF` | Build `pocs/` executables | Full set when `SND_CRTLESS=OFF` |
+| `SND_BUILD_PAYLOADS` | `OFF` | Build `pocs/` executables | Builds `unified`; CRT-less mode selects its SDK-free frontend and native backend profile |
 | `SND_BUILD_TESTS` | `OFF` | Build test payloads + integration harness inputs | **Requires CRT**; forces `SND_CRTLESS=OFF` |
 | `SND_MORPH` | `OFF` | Enables the mutation engine | Polymorphic C/ASM mutations + struct shuffling. See [mutator.md](../scripts/mutator.md). |
 | `SND_USE_DEFAULTS` | `OFF` | Pre-configure syscall invoker, gadget finder, and resolver globals | Defaults to indirect invoke + scan resolver + gadget scan. **OpSec note**: Left OFF by default so unused ASM stubs and scanners aren't linked into the final binary. |
@@ -76,15 +75,21 @@ Use a **clean build directory** when switching between CRT-less and test builds.
 
 ---
 
-## Pre-build hash generation
+## Pre-build generation
 
-At configure time, CMake runs:
+At configure time, CMake runs two Python scripts (requiring a local Python 3 interpreter):
 
+1. **Hash generation**:
 ```text
 python scripts/generate_hashes.py config/hashes.ini <build>/generated/sindri_hashes.h <ALGO> <RANDOMIZE>
 ```
-
 Output: `${CMAKE_BINARY_DIR}/generated/sindri_hashes.h`, on the include path via `target_include_directories`. See [generate_hashes.md](../scripts/generate_hashes.md) and [hashes manifest](../config/hashes_manifest.md).
+
+2. **Status code generation**:
+```text
+python scripts/generate_status_codes.py
+```
+Output: `docs/status_codes.md`, parsing all `SND_STATUS_*` codes directly from C headers into Markdown.
 
 ---
 
@@ -110,7 +115,7 @@ endif()
 
 > [!WARNING]
 > **CRT independence & telemetry**
-> CRT-less builds (`/NODEFAULTLIB`, `/ENTRY:main`) must not use `malloc`, `printf`, or `strcmp`. SindriKit supplies `snd_memcpy` / `snd_memzero` via `memory.h` and `src/common/crt_manifest.c`.
+> CRT-less builds (`/NODEFAULTLIB`, direct entrypoint) must not use `malloc`, `printf`, or `strcmp`. SindriKit supplies `snd_memcpy` / `snd_memzero` via `memory.h` and `src/common/crt_manifest.c`.
 >
 > Enabling `SND_ENABLE_DEBUG` or `SND_USE_PRINTF` pulls `<stdio.h>` into status/debug paths and breaks CRT-less linking. Production implants: **`SND_ENABLE_DEBUG=OFF`**.
 
@@ -129,14 +134,16 @@ SILENT is required for production artifacts.
 
 ## Integration tests layout
 
-The Python test runner (`tests/loader/test_runner.py`) expects **dual-arch** MSVC output trees:
+The Python test runner expects **dual-arch** MSVC output trees:
 
 | Path | Contents |
 |---|---|
 | `build64/pocs/` | x64 PoC binaries |
 | `build32/pocs/` | x86 PoC binaries |
-| `build64/tests/loader/` | x64 test payloads |
-| `build32/tests/loader/` | x86 test payloads |
+| `build64/tests/loaders/pe/` | x64 PE test payloads |
+| `build32/tests/loaders/pe/` | x86 PE test payloads |
+| `build64/tests/loaders/coff/` | x64 COFF test payloads |
+| `build32/tests/loaders/coff/` | x86 COFF test payloads |
 
 Configure with `SND_BUILD_TESTS=ON` and `SND_ENABLE_DEBUG=ON` (tests match stdout substrings from debug output). See [test_runner.md](../tests/test_runner.md).
 
@@ -146,4 +153,5 @@ Configure with `SND_BUILD_TESTS=ON` and `SND_ENABLE_DEBUG=ON` (tests match stdou
 
 - [Getting started: basic usage](basic_usage.md)
 - [Architecture: red-team integration](../architecture/redteam_integration.md)
+- [Architecture: internal Windows boundaries](../architecture/internal_boundaries.md)
 - [Common: CRT manifest](../common/infrastructure.md)

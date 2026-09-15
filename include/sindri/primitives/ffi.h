@@ -2,7 +2,7 @@
 #define SND_PRIMITIVES_FFI_H
 
 #include <sindri/common/macros.h>
-#include <windows.h>
+#include <sindri/internal/windows/types.h>
 
 SND_BEGIN_EXTERN_C
 
@@ -17,8 +17,9 @@ SND_BEGIN_EXTERN_C
  * @param pArgs             Array of @p dwArgCount UINT_PTR-sized arguments.
  * Ignored (and may be NULL) when @p dwArgCount is 0.
  *
- * @return The value returned by the invoked function as a UINT_PTR, or 0 if
- * @p pFunctionAddress is NULL or the current architecture is unsupported.
+ * @retval The value returned by the invoked function as a UINT_PTR.
+ * @retval 0 If @p pFunctionAddress is NULL or the current architecture is
+ * unsupported.
  *
  * @note   Callee-saved registers (RBX, RBP, RDI, RSI, R12-R15) are preserved
  * by the assembly bridge. The caller is responsible for ensuring that

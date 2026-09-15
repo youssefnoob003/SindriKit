@@ -2,9 +2,9 @@
 #define SND_PRIMITIVES_OBJECT_MANAGER_H
 
 #include <sindri/common/macros.h>
-#include <sindri/common/status.h>
+#include <sindri/internal/windows/types.h>
 #include <sindri/primitives/os_api.h>
-#include <windows.h>
+#include <sindri/status.h>
 
 SND_BEGIN_EXTERN_C
 
@@ -24,7 +24,13 @@ SND_BEGIN_EXTERN_C
  * L"ntdll.dll").
  * @param out_base_address Pointer to receive the base address of the mapped
  * section.
- * @return SND_OK on success, or an error code on failure.
+ * @retval SND_OK On success.
+ * @retval SND_STATUS_NULL_POINTER If @p config, @p dll_name, or
+ * @p out_base_address is NULL.
+ * @retval SND_STATUS_OM_NOT_INITIALIZED If the mapping API does not provide
+ * both `open` and `view` callbacks.
+ * @retval Any error returned by `snd_mapping_api_t::open` or
+ * `snd_mapping_api_t::view`.
  */
 snd_status_t snd_om_knowndll_map(const snd_mapping_api_t *config, const wchar_t *dll_name, PVOID *out_base_address);
 

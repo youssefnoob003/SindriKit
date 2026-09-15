@@ -2,8 +2,9 @@
 #define SND_PRIMITIVES_OS_API_H
 
 #include <sindri/common/macros.h>
-#include <sindri/common/status.h>
-#include <windows.h>
+#include <sindri/internal/windows/constants.h>
+#include <sindri/internal/windows/types.h>
+#include <sindri/status.h>
 
 SND_BEGIN_EXTERN_C
 
@@ -28,8 +29,15 @@ typedef snd_status_t(WINAPI *snd_mapping_view_cb)(HANDLE section_handle, PVOID *
 typedef snd_status_t(WINAPI *snd_mapping_close_cb)(HANDLE handle);
 
 // Process Capabilities
-typedef snd_status_t(WINAPI *snd_process_create_cb)(const wchar_t *image_path, const wchar_t *command_line,
-                                                    HANDLE *out_process, HANDLE *out_thread);
+typedef struct snd_process_api snd_process_api_t; // Forward declaration
+
+typedef snd_status_t(WINAPI *snd_process_create_params_cb)(const void *nt_path_unicode, const wchar_t *cmd_line,
+                                                           PVOID *out_params);
+typedef snd_status_t(WINAPI *snd_process_free_params_cb)(PVOID params);
+
+typedef snd_status_t(WINAPI *snd_process_create_cb)(const snd_process_api_t *api, const wchar_t *image_path,
+                                                    const wchar_t *command_line, HANDLE *out_process,
+                                                    HANDLE *out_thread);
 typedef snd_status_t(WINAPI *snd_process_open_cb)(DWORD pid, DWORD desired_access, HANDLE *out_process);
 typedef snd_status_t(WINAPI *snd_process_alloc_remote_cb)(HANDLE process, SIZE_T size, DWORD allocation_type,
                                                           DWORD protect, PVOID *out_address);
@@ -89,7 +97,9 @@ SND_SHUFFLE_END
  * @brief Remote Process Operations API table.
  */
 SND_SHUFFLE_START
-typedef struct {
+struct snd_process_api {
+    snd_process_create_params_cb  create_process_params;
+    snd_process_free_params_cb    free_process_params;
     snd_process_create_cb         create_process;
     snd_process_open_cb           open_process;
     snd_process_alloc_remote_cb   alloc_remote;
@@ -97,7 +107,7 @@ typedef struct {
     snd_process_protect_remote_cb protect_remote;
     snd_process_create_thread_cb  create_remote_thread;
     snd_process_close_cb          close_handle;
-} snd_process_api_t;
+};
 SND_SHUFFLE_END
 
 /**

@@ -1,0 +1,64 @@
+#ifndef SND_PRIMITIVES_STATUS_H
+#define SND_PRIMITIVES_STATUS_H
+
+#include <sindri/common/macros.h>
+#include <sindri/status.h>
+
+SND_BEGIN_EXTERN_C
+
+typedef enum _SND_PRIMITIVES_STATUS_CODE {
+    // Mapping
+    SND_STATUS_MAPPING_OPEN_FAILED = SND_MAKE_STATUS(SND_FACILITY_PRIMITIVES, 1),
+    SND_STATUS_MAPPING_VIEW_FAILED,
+    SND_STATUS_MAPPING_QUERY_FAILED,
+    SND_STATUS_MAPPING_HANDLE_CLOSE_FAILED,
+
+    // Allocation
+    SND_STATUS_ALLOC_FAILED,
+    SND_STATUS_FREE_FAILED,
+    SND_STATUS_PROTECT_FAILED,
+
+    // Modules
+    SND_STATUS_MODULE_LOAD_FAILED,
+    SND_STATUS_PROC_RESOLVE_FAILED,
+    SND_STATUS_MODULE_BASE_GET_FAILED,
+
+    // Object Management
+    SND_STATUS_OM_NOT_INITIALIZED,
+
+    // Handle
+    SND_STATUS_HANDLE_CLOSE_FAILED,
+
+    // PEB
+    SND_STATUS_PEB_LOCAL_NOT_FOUND,
+
+    // Process
+    SND_STATUS_PROCESS_CREATE_PARAMS_FAILED,
+    SND_STATUS_PROCESS_FREE_PARAMS_FAILED,
+    SND_STATUS_PROCESS_CREATE_FAILED,
+    SND_STATUS_PROCESS_OPEN_FAILED,
+    SND_STATUS_PROCESS_REMOTE_ALLOC_FAILED,
+    SND_STATUS_PROCESS_REMOTE_WRITE_FAILED,
+    SND_STATUS_PROCESS_REMOTE_PROTECT_FAILED,
+
+    // Thread
+    SND_STATUS_THREAD_REMOTE_CREATE_FAILED,
+
+    SND_STATUS_THREAD_QUEUE_FAILED,
+    SND_STATUS_THREAD_RESUME_FAILED,
+    SND_STATUS_THREAD_SUSPEND_FAILED,
+
+    // Syscall
+    SND_STATUS_SYSCALL_INVOKER_NOT_INITIALIZED,
+} snd_primitives_status_code_t;
+
+/**
+ * @brief Converts an OS primitives status code into a human-readable description string.
+ * @param code Error code value.
+ * @retval Pointer to a string description, or the default error message.
+ */
+const char *snd_prim_status_to_string(int code);
+
+SND_END_EXTERN_C
+
+#endif // SND_PRIMITIVES_STATUS_H

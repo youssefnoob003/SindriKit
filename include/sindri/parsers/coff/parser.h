@@ -3,8 +3,8 @@
 
 #include <sindri/common/buffer.h>
 #include <sindri/common/macros.h>
-#include <sindri/common/status.h>
-#include <windows.h>
+#include <sindri/internal/windows/coff.h>
+#include <sindri/status/core.h>
 
 SND_BEGIN_EXTERN_C
 
@@ -19,11 +19,11 @@ SND_SHUFFLE_START
 typedef struct {
     snd_buffer_t source;
 
-    PIMAGE_FILE_HEADER    file_header;
-    PIMAGE_SECTION_HEADER section_head;
+    PSND_IMAGE_FILE_HEADER    file_header;
+    PSND_IMAGE_SECTION_HEADER section_head;
 
-    PIMAGE_SYMBOL symbol_table;
-    DWORD         symbol_count;
+    PSND_IMAGE_SYMBOL symbol_table;
+    DWORD             symbol_count;
 
     BYTE *string_table;
     DWORD string_table_size;
@@ -38,7 +38,15 @@ SND_SHUFFLE_END
  *
  * @param buf Raw buffer containing the COFF file data.
  * @param parser Pointer to the parser context to populate.
- * @return SND_OK on success, or a contextual error status.
+ * @retval SND_OK On success.
+ * @retval SND_STATUS_NULL_POINTER If @p buf or @p parser is NULL.
+ * @retval SND_STATUS_HEADER_FILE_TRUNCATED If the COFF header is truncated.
+ * @retval SND_STATUS_HEADER_MACHINE_UNSUPPORTED If the machine type is not
+ * supported.
+ * @retval SND_STATUS_SECTION_TABLE_TRUNCATED If the section table is truncated.
+ * @retval SND_STATUS_SYMBOL_TABLE_OVERFLOW If symbol-table arithmetic
+ * overflows.
+ * @retval SND_STATUS_SYMBOL_TABLE_TRUNCATED If the symbol table is truncated.
  */
 snd_status_t snd_coff_parse(const snd_buffer_t *buf, snd_coff_parser_t *parser);
 

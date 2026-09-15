@@ -46,7 +46,7 @@ static snd_status_t bootstrap_engine(void) {
     if (SND_FAILED(status))
         return status;
 
-    snd_syscall_set_ntdll(ntdll);
+    snd_ntdll_set_clean(ntdll);
     snd_syscall_set_resolver(snd_syscall_resolve_ssn_scan);
     snd_syscall_add_resolver(snd_syscall_resolve_ssn_sort);
     
@@ -131,11 +131,11 @@ Example: [Dependency injection — custom backends](dependency_injection.md#cust
 
 | PoC | Integration lesson |
 |---|---|
-| `loader_winapi` | Simplest DI — Win32 tables, full chain |
-| `loader_nowinapi` | NT tables + syscall bootstrap from disk `ntdll` |
-| `loader_noCRT_nowinapi` | `/NODEFAULTLIB` + minimal surface |
-| `inject_pe` | Dual context — loader bake + remote syscall inject |
-| `inject_shell` | Injection-only, Win32 process API |
+| `unified load pe --win` | Simplest DI — Win32 tables, full chain |
+| `unified load pe --nt` | NT tables with native exports |
+| Engine with `SND_CRTLESS=ON` | `/NODEFAULTLIB`-friendly minimal surface |
+| `unified inject classic pe ... --sys` | Dual context — loader bake + remote syscall inject |
+| `unified inject classic shell ... --win` | Injection-only, Win32 process API |
 | `heavens_gate` | x86 WoW64 execution primitive (orthogonal to syscalls) |
 
 Walkthroughs: [Examples](../examples/README.md).
@@ -169,7 +169,7 @@ Do not link implant-specific evasion code into SindriKit source trees. Instead:
 2. Keep SindriKit vendor copy clean for upstream merges.
 3. Respect domain independence — loaders must not call injection internals directly; use documented chain APIs.
 
-Architecture overview: [README](README.md) · [Domains](../domains/README.md).
+Architecture overview: [README](README.md) · [Domains](../primitives/README.md).
 
 ---
 

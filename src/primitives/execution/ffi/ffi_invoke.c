@@ -1,5 +1,5 @@
+#include <sindri/internal/windows/types.h>
 #include <sindri/primitives/ffi.h>
-#include <windows.h>
 
 /* -------------------------------------------------------------------------
  * External linkage: the MASM x64 / x86 bridges.

@@ -43,4 +43,24 @@
  */
 #define SND_SHUFFLE_END
 
+/**
+ * @def SND_MAX
+ * @brief Returns the maximum of two values.
+ */
+#define SND_MAX(a, b) ((a) > (b) ? (a) : (b))
+
+/**
+ * @def SND_MIN
+ * @brief Returns the minimum of two values.
+ */
+#define SND_MIN(a, b) ((a) < (b) ? (a) : (b))
+
+#if defined(_WIN64)
+#define SND_IS_ARCH_COMPATIBLE(is_64bit) ((is_64bit) != FALSE)
+#elif defined(_WIN32)
+#define SND_IS_ARCH_COMPATIBLE(is_64bit) (!(is_64bit))
+#else
+#error "Unsupported architecture: SindriKit requires _WIN32 or _WIN64"
+#endif
+
 #endif // SND_COMMON_MACROS_H

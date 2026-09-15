@@ -1,35 +1,25 @@
-# Examples & Proof of Concepts
+# Examples & Proofs of Concept
 
-Standalone executables under `pocs/` demonstrate SindriKit domains end-to-end. Each PoC is a thin CLI wrapper around library chain functions — the same APIs documented in the domain references.
+The repository ships a single `unified` executable under `pocs/`. It demonstrates the same public loader, injection, parser, primitive, and syscall APIs used by implant integrations.
 
-PoCs build when `SND_CRTLESS=OFF` (default). CRT-less mode replaces the full PoC set with `loader_noCRT_nowinapi` only.
+The normal executable is built with `SND_USE_WINDOWS_SDK=1` because it exposes the Win32 backend and includes `<windows.h>`. CRT-less builds use the same command implementation with a Sindri-only frontend and native backend selection; the CLI remains silent because it has no CRT console implementation.
 
-Each PoC walkthrough follows: **Location → What it demonstrates → (Command-line) → Walkthrough → Building → OpSec → See also**.
+## Command reference
 
-## OpSec profiles
+- [unified.md](unified.md) — build instructions, command syntax, backend selection, and source organization
 
-| PoC | Loader / injection | Memory | Modules | Process | Syscall bootstrap |
-|---|---|---|---|---|---|
-| `loader_winapi` | Local reflective | `snd_mem_win` | `snd_mod_win` | — | Optional |
-| `loader_nowinapi` | Local reflective | `snd_mem_nt` | `snd_mod_nt` | — | Required (disk `ntdll`) |
-| `loader_noCRT_nowinapi` | Local reflective | `snd_mem_win` | `snd_mod_nt` | — | Required (PEB `ntdll`) |
-| `inject_shell` | Classic shellcode | — | — | `snd_proc_win` | Yes (KnownDlls; unused while `_win`) |
-| `inject_pe` | Classic PE | `snd_mem_sys` | `snd_mod_nt` | `snd_proc_sys` | Required (KnownDlls) |
-| `heavens_gate` | WoW64 → x64 exec | Win32 alloc (demo) | — | — | N/A |
+## Domain walkthroughs
 
-## Table of Contents
+The focused pages remain useful as technique documentation:
 
-### Loaders (local reflective PE)
-- [loader_winapi.md](loader_winapi.md) — Win32 APIs, diagnostic baseline, DLL export FFI
-- [loader_nowinapi.md](loader_nowinapi.md) — NT backends, syscall pipeline bootstrap
-- [loader_noCRT_nowinapi.md](loader_noCRT_nowinapi.md) — `/NODEFAULTLIB`, minimal CRT-less footprint
+- [loader_winapi.md](loader_winapi.md) — Win32 backend profile for `unified load pe`
+- [loader_nowinapi.md](loader_nowinapi.md) — native NT backend profile for `unified load pe`
+- [loader_noCRT_nowinapi.md](loader_noCRT_nowinapi.md) — CRT-less integration constraints
+- [inject_shell.md](inject_shell.md) — classic shellcode injection
+- [inject_pe.md](inject_pe.md) — classic PE injection
+- [heavens_gate.md](heavens_gate.md) — WoW64 to native x64 execution
 
-### Injection (remote classic)
-- [inject_shell.md](inject_shell.md) — Raw shellcode via `snd_inj_classic_shell`
-- [inject_pe.md](inject_pe.md) — PE bake + remote execute via `snd_inj_classic_pe`
-
-### Execution primitives
-- [heavens_gate.md](heavens_gate.md) — WoW64 → native x64 transition
+These pages describe profiles and API composition; their executable examples now live in `pocs/src/` and are invoked through the unified command.
 
 ## Building all PoCs
 
@@ -38,17 +28,19 @@ cmake -B build -DSND_BUILD_PAYLOADS=ON
 cmake --build build --config Release
 ```
 
-Binaries land under `build/pocs/<name>/Release/` (MSVC multi-config) or `build/pocs/<name>/` (single-config generators).
+Binaries land under `build/pocs/Release/unified.exe` (MSVC multi-config) or `build/pocs/unified` (single-config generators).
 
-CRT-less PoC only:
+CRT-less unified PoC:
 
 ```bash
-cmake -B build -DSND_CRTLESS=ON -DSND_ENABLE_DEBUG=OFF
+cmake -B build -DSND_CRTLESS=ON -DSND_ENABLE_DEBUG=OFF -DSND_BUILD_PAYLOADS=ON
 cmake --build build --config Release
 ```
+
+The CRT-less target is still named `unified`. It reads the process command line from the PEB, converts it to the shared command argument model, and runs the same loader and injection commands using native Sindri primitives. Heaven's Gate remains available only to x86 builds.
 
 ## Related documentation
 
 - [Getting started: basic usage](../getting_started/basic_usage.md)
-- [Loaders domain](../domains/loaders/README.md)
-- [Injection domain](../domains/injection/README.md)
+- [Loaders domain](../loaders/README.md)
+- [Injection domain](../injection/README.md)

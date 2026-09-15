@@ -18,7 +18,7 @@
  * operations.
  */
 
-#include <windows.h>
+#include <sindri/internal/windows/types.h>
 
 /*
  * Instruct MSVC to disable internal compiler intrinsics for these specific

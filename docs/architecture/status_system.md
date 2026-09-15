@@ -2,8 +2,8 @@
 
 SindriKit uses a universal **`snd_status_t`** return type instead of bare integers or NULL checks. Failures carry a framework error code and the underlying OS error (Win32 or NTSTATUS) in a single struct.
 
-**Header:** `include/sindri/common/status.h`  
-**Implementation:** `src/common/status.c`
+**Headers:** `include/sindri/status.h`, `include/sindri/status/`
+**Implementation:** `src/status/`
 
 ---
 
@@ -80,25 +80,46 @@ if (SND_FAILED(status)) {
 
 ---
 
-## Status code ranges
+## Architecture overview
 
-Selected groupings from `snd_status_code_t`:
+The status architecture uses structured facility bitmask encoding to classify status codes while delegating string descriptions to dedicated 1:1 submodule resolvers.
 
-| Range | Domain | Examples |
-|---|---|---|
-| `0` | Success | `SND_SUCCESS` |
-| Negative small ints | Generic | `SND_STATUS_INVALID_PARAMETER`, `SND_STATUS_BUFFER_TOO_SMALL` |
-| `0x100` | CLI | `SND_STATUS_MISSING_COMMAND_LINE_ARGS` |
-| `0x200` | File I/O | `SND_STATUS_FILE_READ_FAILED`, `SND_STATUS_ALLOC_FAILED` |
-| `0x300` | PE parsing | `SND_STATUS_INVALID_NT_SIGNATURE`, `SND_STATUS_ARCH_MISMATCH` |
-| `0x400` | Reflective load | `SND_STATUS_IMPORT_SYMBOL_RESOLVE_FAILED`, `SND_STATUS_INVALID_STAGE_SEQUENCE` |
-| `0x500` | Syscalls | `SND_STATUS_SSN_NOT_FOUND` |
-| `0x600` | PEB / env | `SND_STATUS_PEB_MODULE_NOT_FOUND` |
-| `0x800` | OS / mapping | `SND_STATUS_VIRTUAL_ALLOC_FAILED`, `SND_STATUS_SECTION_MAP_FAILED` |
-| `0x900` | Remote / access | `SND_STATUS_ACCESS_DENIED` |
+```
+                  +--------------------------+
+                  |    snd_status_to_string  |
+                  +------------+-------------+
+                               |
+                   +-----------+-----------+
+                   |  Facility ID Switch  |
+                   +-----------+-----------+
+                               |
+         +---------------------+---------------------+
+         |                     |                     |
+  [0x0000] Generic      [0x0003] PE Parser   [0x0005] PE Loader ...
+  generic_status.c      pe_status.c          pe_loader_status.c
+```
 
-Full enum: `include/sindri/common/status.h`.  
-Per-domain references: [Common API](../common/api_reference.md#status-sindricommonstatush).
+---
+
+## Status code facilities and domain headers
+
+Status codes are separated by **Facility ID** (`snd_facility_id_t`) and constructed via `SND_MAKE_STATUS(facility_id, local_code)`. Each domain owns its status enum and string conversion lookup:
+
+| Facility ID | Constant Name | Domain | Domain Header | Example Status Codes |
+|---|---|---|---|---|
+| `0x0000` | `SND_FACILITY_GENERIC` | Generic | `sindri/status/core.h` | `SND_SUCCESS`, `SND_STATUS_NULL_POINTER`, `SND_STATUS_ARCH_MISMATCH`, `SND_STATUS_TOO_MANY_ARGUMENTS` |
+| `0x0001` | `SND_FACILITY_CLI` | CLI | `sindri/status/core.h` | `SND_STATUS_MISSING_COMMAND_LINE_ARGS`, `SND_STATUS_INVALID_COMMAND_LINE_ARG` |
+| `0x0002` | `SND_FACILITY_FILE` | File I/O | `sindri/status/core.h` | `SND_STATUS_FILE_INVALID_PATH`, `SND_STATUS_FILE_CREATE_FAILED`, `SND_STATUS_FILE_READ_FAILED`, `SND_STATUS_FILE_TOO_LARGE` |
+| `0x0003` | `SND_FACILITY_CONTEXT_MACHINES` | Loader/injection stages | `sindri/status/core.h` | `SND_STATUS_INVALID_STAGE`, `SND_STATUS_CORRUPTED_STAGE` |
+| `0x0004` | `SND_FACILITY_PARSER_PE` | PE parsing | `sindri/parsers/pe/status.h` | `SND_STATUS_HEADER_DOS_SIGNATURE_INVALID`, `SND_STATUS_HEADER_NT_SIGNATURE_INVALID`, `SND_STATUS_HEADER_OFFSET_INVALID`, `SND_STATUS_EXPORT_SYMBOL_MISSING`, `SND_STATUS_DIRECTORY_ENTRY_MISSING`, `SND_STATUS_RELOCATION_BLOCK_INVALID` |
+| `0x0005` | `SND_FACILITY_PARSER_COFF` | COFF parsing | `sindri/parsers/coff/status.h` | `SND_STATUS_HEADER_MACHINE_UNSUPPORTED`, `SND_STATUS_SYMBOL_ENTRY_MISSING`, `SND_STATUS_SYMBOL_NAKED_REJECTED`, `SND_STATUS_COFF_RELOCATION_TYPE_UNSUPPORTED` |
+| `0x0006` | `SND_FACILITY_PARSER_ENV` | PEB/environment parsing | `sindri/parsers/env/status.h` | `SND_STATUS_MODULE_NOT_FOUND`, `SND_STATUS_NTDLL_CLEAN_NOT_INITIALIZED`, `SND_STATUS_PEB_GET_FAILED`, `SND_STATUS_MODULE_LIST_CORRUPTED` |
+| `0x0007` | `SND_FACILITY_LOADER_PE` | Reflective PE loading | `sindri/loaders/pe/status.h` | `SND_STATUS_IMAGE_ENTRY_POINT_MISSING`, `SND_STATUS_DLL_INITIALIZATION_FAILED`, `SND_STATUS_LOCAL_EXECUTION_BLOCKED`, `SND_STATUS_RELOCATION_DIRECTORY_STRIPPED` |
+| `0x0008` | `SND_FACILITY_LOADER_COFF` | COFF loading | `sindri/loaders/coff/status.h` | `SND_STATUS_COFF_LOADER_SYMBOL_MISSING`, `SND_STATUS_SYMBOL_ADDRESS_NULL`, `SND_STATUS_COFF_LOADER_MAP_SIZE_OVERFLOW`, `SND_STATUS_COFF_LOADER_RELOC_OUT_OF_RANGE` |
+| `0x0009` | `SND_FACILITY_SYSCALL` | Syscalls | `sindri/primitives/syscalls.h` | `SND_STATUS_SSN_NOT_FOUND`, `SND_STATUS_GADGET_NOT_FOUND`, `SND_STATUS_SPOOF_GADGET_NOT_FOUND`, `SND_STATUS_RESOLVER_NOT_INITIALIZED`, `SND_STATUS_NTDLL_NOT_INITIALIZED` |
+| `0x000A` | `SND_FACILITY_PRIMITIVES` | OS primitives | `sindri/primitives/status.h` | `SND_STATUS_ALLOC_FAILED`, `SND_STATUS_PROCESS_OPEN_FAILED`, `SND_STATUS_PROCESS_CREATE_FAILED`, `SND_STATUS_THREAD_QUEUE_FAILED`, `SND_STATUS_THREAD_RESUME_FAILED`, `SND_STATUS_SYSCALL_INVOKER_NOT_INITIALIZED` |
+
+Domain headers are aggregated into `sindri/status.h` for seamless framework inclusion. `snd_status_to_string()` extracts the facility via `SND_STATUS_FACILITY(status.code)` and dispatches lookup to domain-specific functions (`snd_pe_parser_status_to_string()`, `snd_ldr_pe_status_to_string()`, etc.). Injection currently reuses generic, primitive, and stage statuses rather than defining separate injection facilities.
 
 ---
 

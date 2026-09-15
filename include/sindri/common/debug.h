@@ -32,9 +32,9 @@
 SND_BEGIN_EXTERN_C
 
 #if SND_DEBUG
+#include <sindri/internal/win32/api.h>
 #include <stdarg.h>
 #include <stdio.h>
-#include <windows.h>
 
 #if SND_USE_PRINTF
 
@@ -83,6 +83,12 @@ static inline void debug_print(const char *fmt, ...) {
 
 /**
  * @brief Prints a combined hexadecimal and ASCII view of a byte buffer.
+ */
+/**
+ * @brief Emits a hexadecimal and ASCII view of a byte buffer.
+ * @param dat Buffer to display.
+ * @param len_dat Number of bytes to display.
+ * @param base_off Starting offset printed for the first row.
  */
 void snd_dump_hex(const void *dat, size_t len_dat, uintptr_t base_off);
 

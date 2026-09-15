@@ -1,0 +1,48 @@
+#ifndef SND_PARSERS_COFF_STATUS_H
+#define SND_PARSERS_COFF_STATUS_H
+
+#include <sindri/common/macros.h>
+#include <sindri/status/facility.h>
+
+SND_BEGIN_EXTERN_C
+
+typedef enum _SND_COFF_PARSER_STATUS_CODE {
+    // Headers
+    SND_STATUS_HEADER_FILE_TRUNCATED = SND_MAKE_STATUS(SND_FACILITY_PARSER_COFF, 1),
+    SND_STATUS_HEADER_MACHINE_UNSUPPORTED,
+
+    // Sections
+    SND_STATUS_SECTION_TABLE_TRUNCATED,
+    SND_STATUS_SECTION_OFFSET_OVERFLOW,
+    SND_STATUS_SECTION_HEADER_MISSING,
+
+    // Symbols
+    SND_STATUS_SYMBOL_TABLE_TRUNCATED,
+    SND_STATUS_SYMBOL_TABLE_OVERFLOW,
+    SND_STATUS_SYMBOL_ENTRY_MISSING,
+    SND_STATUS_SYMBOL_RESOLUTION_FAILED,
+    SND_STATUS_SYMBOL_NAKED_REJECTED,
+    SND_STATUS_SYMBOL_DECODE_OVERFLOW,
+
+    // Strings
+    SND_STATUS_STRING_TABLE_OVERFLOW,
+
+    // Relocations
+    SND_STATUS_RELOCATION_TABLE_INVALID,
+    SND_STATUS_RELOCATION_TABLE_MISSING,
+    SND_STATUS_RELOCATION_TABLE_TRUNCATED,
+    SND_STATUS_RELOCATION_TABLE_OVERFLOW,
+    SND_STATUS_COFF_RELOCATION_TYPE_UNSUPPORTED,
+    SND_STATUS_COFF_RELOCATION_PATCH_OUT_OF_RANGE,
+} snd_coff_parser_status_code_t;
+
+/**
+ * @brief Converts a COFF parser status code into a human-readable description string.
+ * @param code Error code value.
+ * @retval Pointer to a string description, or the default error message.
+ */
+const char *snd_coff_parser_status_to_string(int code);
+
+SND_END_EXTERN_C
+
+#endif // SND_PARSERS_COFF_STATUS_H

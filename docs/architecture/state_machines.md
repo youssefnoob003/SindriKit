@@ -40,7 +40,7 @@ Because all progress lives in the context struct, an implant can stop between en
 
 ### Enforced ordering
 
-Calling `snd_ldr_pe_resolve_imports` before relocations completes yields `SND_STATUS_INVALID_STAGE_SEQUENCE` instead of corrupting the mapped image.
+Calling `snd_ldr_pe_resolve_imports` before relocations completes yields `SND_STATUS_INVALID_STAGE` instead of corrupting the mapped image.
 
 ---
 
@@ -161,7 +161,7 @@ Notable differences from local reflective load:
 
 ## Stage validation errors
 
-Both domains return **`SND_STATUS_INVALID_STAGE_SEQUENCE`** when:
+Both domains return **`SND_STATUS_INVALID_STAGE`** when:
 
 - Current `stage` does not match the engine function's prerequisite
 - DEBUG builds include formatted expected vs actual stage names in `status.context`
@@ -189,6 +189,6 @@ When `SND_ENABLE_DEBUG=ON`, chain and engine code emit transitions via `SND_DEBU
 ## Related documentation
 
 - [Dependency injection](dependency_injection.md)
-- [Loaders techniques](../domains/loaders/techniques.md)
-- [Injection techniques](../domains/injection/techniques.md)
-- [Status system](status_system.md) — `SND_STATUS_INVALID_STAGE_SEQUENCE`
+- [Loaders techniques](../loaders/internals.md)
+- [Injection techniques](../injection/internals.md)
+- [Status system](status_system.md) — `SND_STATUS_INVALID_STAGE`

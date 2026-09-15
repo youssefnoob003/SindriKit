@@ -2,9 +2,9 @@
 #define SND_PRIMITIVES_THREAD_H
 
 #include <sindri/common/macros.h>
-#include <sindri/common/status.h>
+#include <sindri/internal/windows/types.h>
 #include <sindri/primitives/os_api.h>
-#include <windows.h>
+#include <sindri/status.h>
 
 SND_BEGIN_EXTERN_C
 

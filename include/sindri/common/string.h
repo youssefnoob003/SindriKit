@@ -2,7 +2,9 @@
 #define SND_COMMON_STRING_H
 
 #include <sindri/common/macros.h>
+#include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 SND_BEGIN_EXTERN_C
 
@@ -80,6 +82,27 @@ SND_FORCE_INLINE int snd_strncmp(const char *s1, const char *s2, size_t max_len)
         if (s1[i] != s2[i])
             return (int)((unsigned char)s1[i] - (unsigned char)s2[i]);
         if (s1[i] == '\0')
+            return 0;
+    }
+    return 0;
+}
+
+/**
+ * @brief Bounded, case-insensitive string comparison. Replaces strnicmp.
+ */
+SND_FORCE_INLINE int snd_strnicmp(const char *s1, const char *s2, size_t max_len) {
+    if (!s1 || !s2)
+        return (s1 == s2) ? 0 : ((s1 < s2) ? -1 : 1);
+    for (size_t i = 0; i < max_len; i++) {
+        char c1 = s1[i];
+        char c2 = s2[i];
+        if (c1 >= 'A' && c1 <= 'Z')
+            c1 += ('a' - 'A');
+        if (c2 >= 'A' && c2 <= 'Z')
+            c2 += ('a' - 'A');
+        if (c1 != c2)
+            return (int)((unsigned char)c1 - (unsigned char)c2);
+        if (c1 == '\0')
             return 0;
     }
     return 0;
@@ -169,6 +192,63 @@ SND_FORCE_INLINE void snd_ascii_to_wide(wchar_t *dest, size_t dest_size, const c
     dest[i] = L'\0';
 }
 
+/**
+ * @brief Bounded ASCII decimal string to 32-bit unsigned integer conversion. Replaces strtoul.
+ * @param str Null-terminated or bounded ASCII decimal string.
+ * @param max_len Maximum number of characters to inspect.
+ * @param out_val Receives the parsed value.
+ * @retval true If at least one valid digit was parsed without overflow.
+ * @retval false If input is invalid, contains no digits, or overflows.
+ */
+SND_FORCE_INLINE bool snd_atou32_bounded(const char *str, size_t max_len, uint32_t *out_val) {
+    if (!str || !out_val || max_len == 0)
+        return false;
+
+    uint32_t value  = 0;
+    size_t   digits = 0;
+
+    for (size_t i = 0; i < max_len && str[i] != '\0'; i++) {
+        char c = str[i];
+        if (c < '0' || c > '9') {
+            break;
+        }
+
+        uint32_t digit = (uint32_t)(c - '0');
+
+        if (value > (UINT32_MAX / 10u) || (value == (UINT32_MAX / 10u) && digit > (UINT32_MAX % 10u))) {
+            return false;
+        }
+
+        value = (value * 10u) + digit;
+        digits++;
+    }
+
+    if (digits == 0)
+        return false;
+
+    *out_val = value;
+    return true;
+}
+
+/**
+ * @brief Safely computes the size of a double-null-terminated wide environment block.
+ * @param env Environment block to inspect.
+ * @param max_chars Maximum number of wide characters to inspect.
+ * @retval Number of bytes including the double-null terminator.
+ * @retval 0 If the input is invalid or no double-null terminator is found.
+ */
+SND_FORCE_INLINE size_t snd_wcsn_env_size(const wchar_t *env, size_t max_chars) {
+    if (!env || max_chars < 2)
+        return 0;
+
+    for (size_t i = 0; i < max_chars - 1; i++) {
+        if (env[i] == L'\0' && env[i + 1] == L'\0') {
+            return (i + 2) * sizeof(wchar_t);
+        }
+    }
+
+    return 0;
+}
 SND_END_EXTERN_C
 
 #endif // SND_COMMON_STRING_H

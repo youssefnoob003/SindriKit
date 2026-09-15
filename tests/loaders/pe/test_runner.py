@@ -2,8 +2,8 @@
 SindriKit Integration Test Runner
 
 Data-driven test matrix that auto-expands compact specs across all
-loader x architecture combinations.  Add a new Spec to SPECS and every
-relevant (loader, arch) variant is generated automatically.
+backend x architecture combinations.  Add a new Spec to SPECS and every
+relevant (backend, arch) variant is generated automatically.
 
 Usage:
     python tests/test_runner.py [--corkami]
@@ -39,8 +39,14 @@ _BITS = {"x64": 64, "x86": 32}
 _PTR_WIDTH = {"x64": 16, "x86": 8}  # MSVC %p hex-digit count
 
 ARCHES = ("x64", "x86")
-LOADERS = ("nowinapi", "winapi")
-_LOADER_TAG = {"nowinapi": "NoWinAPI", "winapi": "WinAPI"}
+BACKENDS = (
+    ("win", "Win32", ()),
+    ("nt", "Native API", ("--nt",)),
+    ("sys-direct-scan", "Syscalls (direct, scan)", ("--sys", "--invoke-direct", "--resolve-scan")),
+    ("sys-indirect-scan", "Syscalls (indirect, scan)", ("--sys", "--invoke-indirect", "--resolve-scan")),
+    ("sys-spoofed-scan", "Syscalls (spoofed, scan)", ("--sys", "--invoke-spoofed", "--resolve-scan")),
+    ("sys-indirect-sort", "Syscalls (indirect, sort)", ("--sys", "--invoke-indirect", "--resolve-sort")),
+)
 
 
 class Colors:
@@ -71,12 +77,12 @@ class TestCase:
 
 @dataclass
 class Spec:
-    """Architecture- and loader-independent test specification.
+    """Architecture- and backend-independent test specification.
 
-    Expands into one TestCase per (loader, arch) combination.
+    Expands into one TestCase per (backend, arch) combination.
     """
 
-    loaders: Tuple[str, ...]
+    backends: Tuple[str, ...]
     payload: str  # e.g. "test_dll", "test_exe_advanced"
     export: Optional[str] = None
     args: List[str] = field(default_factory=list)
@@ -93,16 +99,15 @@ class Spec:
         w = _PTR_WIDTH[arch]
         return f"Export returned: 0x{self.expect_retval:0{w}X}"
 
-    def to_test_case(self, loader: str, arch: str) -> TestCase:
+    def to_test_case(self, backend_name: str, backend_label: str, backend_args: Tuple[str, ...], arch: str) -> TestCase:
         bits = _BITS[arch]
-        loader_exe = os.path.join(
-            _BIN[bits], f"loader_{loader}", "Release", f"loader_{loader}.exe"
-        )
+        loader_exe = os.path.abspath(os.path.join(_BIN[bits], "Release", "unified.exe"))
         payload_file = os.path.join(
             _TEST[bits], "Release", f"{self.payload}_{arch}{self._ext()}"
         )
+        payload_file = os.path.abspath(payload_file)
 
-        cmd = [loader_exe, "-f", payload_file]
+        cmd = [loader_exe, "load", "pe", "-f", payload_file] + list(backend_args)
         if self.export:
             cmd += ["-e", self.export]
         for a in self.args:
@@ -112,9 +117,8 @@ class Spec:
         if self.expect_retval is not None:
             expect = self._format_retval(arch)
 
-        tag = _LOADER_TAG[loader]
         return TestCase(
-            name=f"{tag} ({arch}) -> {self.label}",
+            name=f"{backend_label} ({arch}) -> {self.label}",
             cmd=cmd,
             expect_stdout=expect,
             expect_returncode=self.expect_rc,
@@ -123,13 +127,12 @@ class Spec:
 
 
 # ── Declarative Test Specs ──────────────────────────────────────────────────
-# Each Spec generates   len(loaders) x len(ARCHES)   concrete TestCases.
-# 7 specs x 2 loaders x 2 arches = 28 tests from this table alone.
+# Each Spec generates   len(backends) x len(ARCHES)   concrete TestCases.
 
 SPECS = [
     # ── DLL: correct args ───────────────────────────────────────────────────
     Spec(
-        ("nowinapi", "winapi"),
+        tuple(name for name, _, _ in BACKENDS),
         "test_dll",
         "SayHello",
         ["bonjour", "hello", "12"],
@@ -138,7 +141,7 @@ SPECS = [
     ),
     # ── DLL: bad args ───────────────────────────────────────────────────────
     Spec(
-        ("nowinapi", "winapi"),
+        tuple(name for name, _, _ in BACKENDS),
         "test_dll",
         "SayHello",
         ["wrong", "args"],
@@ -147,15 +150,15 @@ SPECS = [
     ),
     # ── DLL: missing -e parameter ───────────────────────────────────────────
     Spec(
-        ("nowinapi", "winapi"),
+        tuple(name for name, _, _ in BACKENDS),
         "test_dll",
-        expect_stdout="Error: DLL payload requires an export name",
+        expect_stdout="Export name is required for DLL payloads",
         expect_fail=True,
         label="Edge Case: Missing Export Parameter",
     ),
     # ── DLL: advanced (imports, allocs) ─────────────────────────────────────
     Spec(
-        ("nowinapi", "winapi"),
+        tuple(name for name, _, _ in BACKENDS),
         "test_dll_advanced",
         "AdvancedExport",
         ["advanced_test"],
@@ -164,16 +167,16 @@ SPECS = [
     ),
     # ── DLL: empty (missing export directory) ───────────────────────────────
     Spec(
-        ("nowinapi", "winapi"),
+        tuple(name for name, _, _ in BACKENDS),
         "test_dll_empty",
         "NonExistentExport",
-        expect_stdout="Error: Requested export was not found",
+        expect_stdout="Requested PE data directory entry is missing",
         expect_fail=True,
         label="Load Empty DLL (Missing Dirs)",
     ),
     # ── DLL: verify DllMain ran + relocations applied ───────────────────────
     Spec(
-        ("nowinapi", "winapi"),
+        tuple(name for name, _, _ in BACKENDS),
         "test_dll",
         "VerifyInit",
         expect_retval=0xC001D00D,
@@ -181,7 +184,7 @@ SPECS = [
     ),
     # ── DLL: verify multi-import IAT resolution ────────────────────────────
     Spec(
-        ("nowinapi", "winapi"),
+        tuple(name for name, _, _ in BACKENDS),
         "test_dll_advanced",
         "VerifyImports",
         expect_retval=0xCA11AB1E,
@@ -189,7 +192,7 @@ SPECS = [
     ),
     # ── DLL: verify TLS callback execution ─────────────────────────────────
     Spec(
-        ("nowinapi", "winapi"),
+        tuple(name for name, _, _ in BACKENDS),
         "test_dll_tls",
         "VerifyTLS",
         expect_retval=0x71500C01,
@@ -197,7 +200,7 @@ SPECS = [
     ),
     # ── EXE: basic ──────────────────────────────────────────────────────────
     Spec(
-        ("nowinapi", "winapi"),
+        tuple(name for name, _, _ in BACKENDS),
         "test_exe",
         expect_stdout="Jumping to EXE Entry Point",
         expect_rc=122,  # 0x7A
@@ -205,7 +208,7 @@ SPECS = [
     ),
     # ── EXE: advanced (stdlib init, heap allocs) ────────────────────────────
     Spec(
-        ("nowinapi", "winapi"),
+        tuple(name for name, _, _ in BACKENDS),
         "test_exe_advanced",
         expect_stdout="Successfully allocated and printed",
         expect_rc=4919,  # 0x1337
@@ -215,13 +218,13 @@ SPECS = [
 
 
 def expand_specs(specs):
-    """Expand Specs into TestCases, grouped by (loader, arch) for clean output."""
+    """Expand Specs into TestCases, grouped by (backend, arch) for clean output."""
     cases = []
-    for loader in LOADERS:
+    for backend_name, backend_label, backend_args in BACKENDS:
         for arch in ARCHES:
             for spec in specs:
-                if loader in spec.loaders:
-                    cases.append(spec.to_test_case(loader, arch))
+                if backend_name in spec.backends:
+                    cases.append(spec.to_test_case(backend_name, backend_label, backend_args, arch))
     return cases
 
 
@@ -229,24 +232,27 @@ def expand_specs(specs):
 
 
 def build_mismatch_tests():
-    """Generate arch-mismatch guard test cases for nowinapi."""
+    """Generate architecture-mismatch guard test cases through unified."""
     cases = []
     for loader_arch, payload_arch in [("x64", "x86"), ("x86", "x64")]:
         lb, pb = _BITS[loader_arch], _BITS[payload_arch]
-        expect = "Payload architecture does not match loader architecture"
+        expect = "Architecture incompatible with target payload"
         cases.append(
             TestCase(
-                name=f"NoWinAPI ({loader_arch}) -> Arch Mismatch Guard "
+                name=f"Win32 ({loader_arch}) -> Arch Mismatch Guard "
                 f"({loader_arch} loader, {payload_arch} DLL)",
                 cmd=[
                     os.path.join(
-                        _BIN[lb],
-                        "loader_nowinapi",
+                        os.path.abspath(_BIN[lb]),
                         "Release",
-                        "loader_nowinapi.exe",
+                        "unified.exe",
                     ),
+                    "load",
+                    "pe",
                     "-f",
-                    os.path.join(_TEST[pb], "Release", f"test_dll_{payload_arch}.dll"),
+                    os.path.abspath(
+                        os.path.join(_TEST[pb], "Release", f"test_dll_{payload_arch}.dll")
+                    ),
                     "-e",
                     "SayHello",
                 ],
@@ -279,12 +285,9 @@ def load_corkami_tests(enabled=False):
                 TestCase(
                     name=f"Corkami Parser Stress Test -> {file}",
                     cmd=[
-                        os.path.join(
-                            _BIN[64],
-                            "loader_winapi",
-                            "Release",
-                            "loader_winapi.exe",
-                        ),
+                        os.path.abspath(os.path.join(_BIN[64], "Release", "unified.exe")),
+                        "load",
+                        "pe",
                         "-f",
                         os.path.join(CORKAMI_DIR, file),
                     ],
@@ -483,10 +486,8 @@ def load_mutation_tests(enabled=False):
         out_dir = os.path.join(f"build{bits}", "mutations")
         os.makedirs(out_dir, exist_ok=True)
 
-        for loader in LOADERS:
-            loader_exe = os.path.join(
-                _BIN[bits], f"loader_{loader}", "Release", f"loader_{loader}.exe"
-            )
+        for backend_name, backend_label, backend_args in BACKENDS:
+            loader_exe = os.path.join(_BIN[bits], "Release", "unified.exe")
 
             for mutation in pe_mutator.ALL_MUTATIONS:
                 # Select the correct base file based on mutation requirements
@@ -507,11 +508,11 @@ def load_mutation_tests(enabled=False):
                     print(f"[{Colors.YELLOW}WARN{Colors.RESET}] {e}")
                     continue
 
-                tag = _LOADER_TAG[loader]
                 tests.append(
                     TestCase(
-                        name=f"{tag} ({arch}) -> Mutation: {mutation.name}",
-                        cmd=[loader_exe, "-f", mutated_path] + cmd_args,
+                        name=f"{backend_label} ({arch}) -> Mutation: {mutation.name}",
+                        cmd=[loader_exe, "load", "pe", "-f", os.path.abspath(mutated_path)] +
+                        list(backend_args) + cmd_args,
                         expect_fail=not mutation.expect_loadable,
                         corkami_fuzz=True,  # Reuse fuzz logic to ensure we don't 0xC0000005
                     )
@@ -553,7 +554,7 @@ def main():
 
     print(
         f"[*] {len(full_matrix)} test cases "
-        f"({len(SPECS)} specs x {len(LOADERS)} loaders x {len(ARCHES)} arches)\n"
+        f"({len(SPECS)} specs x {len(BACKENDS)} backends x {len(ARCHES)} arches)\n"
     )
 
     passed = 0
@@ -579,20 +580,14 @@ def main():
         sys.exit(0)
 
     pct = (passed / ran) * 100
-    if pct > 95:
-        print(
-            f"Result: {Colors.GREEN}{pct:.0f}%. "
-            f"{passed}/{ran} passed{Colors.RESET}"
-            + (f"  ({skipped} skipped)" if skipped else "")
-        )
-        sys.exit(0)
-    else:
-        print(
-            f"Result: {Colors.RED}{pct:.1f}%. "
-            f"{passed}/{ran} passed, {ran - passed} failed{Colors.RESET}"
-            + (f"  ({skipped} skipped)" if skipped else "")
-        )
-        sys.exit(1)
+    failed = ran - passed
+    color = Colors.GREEN if failed == 0 else Colors.RED
+    print(
+        f"Result: {color}{pct:.1f}%. {passed}/{ran} passed"
+        f"{', ' + str(failed) + ' failed' if failed else ''}"
+        f"{f' ({skipped} skipped)' if skipped else ''}{Colors.RESET}"
+    )
+    sys.exit(0 if failed == 0 else 1)
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@
 
 #include <sindri/parsers/coff/parser.h>
 #include <sindri/parsers/coff/relocations.h>
+#include <sindri/parsers/coff/status.h>
 #include <sindri/parsers/coff/symbols.h>
 #include <sindri/parsers/coff/utils.h>
 

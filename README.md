@@ -106,7 +106,7 @@ snd_inj_cleanup(&inj);
 SindriKit treats syscall resolution as an injectable mechanic, stacking strategies in priority order. The engine falls through until one succeeds:
 
 ```c
-snd_syscall_set_ntdll(clean_ntdll);
+snd_ntdll_set_clean(clean_ntdll);
 snd_syscall_set_resolver(snd_syscall_resolve_ssn_scan);
 snd_syscall_add_resolver(snd_syscall_resolve_ssn_sort);
 snd_syscall_set_invoker(snd_syscall_direct_invoke_asm);
@@ -154,7 +154,7 @@ Bootstrap the syscall pipeline once (typical pattern):
 ```c
 PVOID clean_ntdll = NULL;
 snd_om_knowndll_map(&snd_map_nt, L"ntdll.dll", &clean_ntdll);
-snd_syscall_set_ntdll(clean_ntdll);
+snd_ntdll_set_clean(clean_ntdll);
 snd_syscall_set_resolver(snd_syscall_resolve_ssn_scan);
 snd_syscall_add_resolver(snd_syscall_resolve_ssn_sort);
 snd_syscall_set_invoker(snd_syscall_direct_invoke_asm);
@@ -210,7 +210,7 @@ Full reference under [`docs/`](docs/README.md):
 - **[Injection](docs/domains/injection/)** — Classic shellcode and PE injection
 - **[Parsers](docs/parsers/)** — PE and env (PEB) subdomains
 - **[Common](docs/common/)** — CRT-free helpers, buffers, hashing, status
-- **[Examples & PoCs](docs/examples/)** — `loader_winapi`, `loader_nowinapi`, `inject_pe`, `inject_shell`, `heavens_gate`
+- **[Examples & PoCs](docs/examples/)** — `unified` executable profiles (load, inject, hg)
 - **[Tests](docs/tests/)** — Integration runner, PE mutator
 
 *Planned: **[Evasion](docs/domains/evasion/)** domain.*

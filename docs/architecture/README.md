@@ -13,7 +13,7 @@ Design patterns, execution models, and telemetry constraints governing SindriKit
 └───────────────────────────┬─────────────────────────────────┘
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  Domains: loaders · injection · (future) evasion            │
+│  Domains: loaders · injection · (future) networking         │
 └───────────────────────────┬─────────────────────────────────┘
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
@@ -31,9 +31,10 @@ Design patterns, execution models, and telemetry constraints governing SindriKit
 - [state_machines.md](state_machines.md) — loader and injection stage graphs
 - [status_system.md](status_system.md) — `snd_status_t`, DEBUG vs SILENT tiers
 - [redteam_integration.md](redteam_integration.md) — CMake embed, hash rotation, BYOM
+- [internal_boundaries.md](internal_boundaries.md) — Windows SDK/native header and source boundaries
 
 ## Related documentation
 
 - [Getting started](../getting_started/README.md)
-- [Domains](../domains/README.md)
+- [Domains](../primitives/README.md)
 - [Examples](../examples/README.md)

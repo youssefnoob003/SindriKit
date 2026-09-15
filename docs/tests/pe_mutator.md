@@ -1,6 +1,6 @@
-# PE Mutation Engine (`tests/loader/pe_mutator.py`)
+# PE Mutation Engine (`tests/loaders/pe/pe_mutator.py`)
 
-**Location:** `tests/loader/pe_mutator.py`
+**Location:** `tests/loaders/pe/pe_mutator.py`
 
 Applies targeted structural modifications to valid PE files to stress-test the reflective loader parser and pipeline. Output filenames use each mutation's **`name`** field: `{basename}_{name}.dll`.
 

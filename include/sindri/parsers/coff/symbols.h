@@ -2,11 +2,16 @@
 #define SND_PARSERS_COFF_SYMBOLS_H
 
 #include <sindri/common/macros.h>
-#include <sindri/common/status.h>
+#include <sindri/internal/windows/coff.h>
 #include <sindri/parsers/coff/parser.h>
-#include <windows.h>
+#include <sindri/status/core.h>
 
 SND_BEGIN_EXTERN_C
+
+/**
+ * @brief Maximum symbol length for COFF symbol name extraction
+ */
+#define SND_COFF_MAX_SYMBOL_LEN 4096
 
 /**
  * @brief Defines the resolved runtime category of a COFF symbol.
@@ -55,9 +60,10 @@ SND_SHUFFLE_END
  *
  * @param parser The parsed COFF object.
  * @param index The zero-based index.
- * @return Pointer to the IMAGE_SYMBOL, or NULL if invalid/out of bounds.
+ * @retval Pointer to the IMAGE_SYMBOL.
+ * @retval NULL If the index is invalid or outside the symbol table.
  */
-PIMAGE_SYMBOL snd_coff_get_symbol_by_index(const snd_coff_parser_t *parser, DWORD index);
+PSND_IMAGE_SYMBOL snd_coff_get_symbol_by_index(const snd_coff_parser_t *parser, DWORD index);
 
 /**
  * @brief Finds a symbol by its exact string name.
@@ -65,11 +71,15 @@ PIMAGE_SYMBOL snd_coff_get_symbol_by_index(const snd_coff_parser_t *parser, DWOR
  * @param parser The parsed COFF object.
  * @param name The name to search for (e.g. "_MyFunction").
  * @param symbol_out Output pointer to store the located symbol.
+ * @param name_len The length of the name to search for.
  * @param index_out Optional output pointer to store the located symbol's index.
- * @return SND_OK on success, SND_STATUS_NOT_FOUND, or other errors.
+ * @retval SND_OK On success.
+ * @retval SND_STATUS_NULL_POINTER If an argument is NULL.
+ * @retval SND_STATUS_SYMBOL_ENTRY_MISSING If a symbol record is unavailable.
+ * @retval Any error returned by `snd_coff_get_symbol_name`.
  */
-snd_status_t snd_coff_find_symbol_by_name(const snd_coff_parser_t *parser, const char *name, PIMAGE_SYMBOL *symbol_out,
-                                          DWORD *index_out);
+snd_status_t snd_coff_find_symbol_by_name(const snd_coff_parser_t *parser, const char *name, SIZE_T name_len,
+                                          PSND_IMAGE_SYMBOL *symbol_out, DWORD *index_out);
 
 /**
  * @brief Decodes a symbol into a human-readable format.
@@ -77,18 +87,16 @@ snd_status_t snd_coff_find_symbol_by_name(const snd_coff_parser_t *parser, const
  * @param parser The parsed COFF object.
  * @param sym The symbol to decode.
  * @param decoded Output pointer to store the decoded symbol.
- * @return SND_OK on success, or an error code on failure.
+ * @retval SND_OK On success.
+ * @retval SND_STATUS_NULL_POINTER If an argument is NULL.
+ * @retval SND_STATUS_SYMBOL_NAKED_REJECTED If the symbol format is unsupported.
+ * @retval SND_STATUS_SYMBOL_TABLE_OVERFLOW If symbol-table arithmetic overflows.
+ * @retval SND_STATUS_SYMBOL_DECODE_OVERFLOW If decoding exceeds the available
+ * symbol data.
+ * @retval Any error returned by `snd_coff_get_symbol_name`.
  */
-snd_status_t snd_coff_decode_symbol(const snd_coff_parser_t *parser, PIMAGE_SYMBOL sym,
+snd_status_t snd_coff_decode_symbol(const snd_coff_parser_t *parser, PSND_IMAGE_SYMBOL sym,
                                     snd_coff_decoded_sym_t *decoded);
-
-/**
- * @brief Writes a jump trampoline to the destination address.
- *
- * @param dest The destination address to write the trampoline to.
- * @param target_addr The target address to jump to.
- */
-void snd_coff_write_jmp_trampoline(void *dest, void *target_addr);
 
 SND_END_EXTERN_C
 

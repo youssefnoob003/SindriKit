@@ -1,6 +1,7 @@
-# PoC: heavens_gate
+# Example: Heaven's Gate
 
-**Location:** `pocs/heavens_gate/`
+**Command implementation:** `pocs/src/cmd_hg.c`
+**Invocation:** `unified hg` in an x86 build
 
 Demonstrates transitioning from a 32-bit WoW64 process into native 64-bit execution using the `0x33` segment selector (Heaven's Gate). Executes 64-bit shellcode and retrieves the 64-bit return value in `RAX`.
 
@@ -72,9 +73,9 @@ cmake -B build -A Win32 -DSND_BUILD_PAYLOADS=ON
 cmake --build build --config Release
 ```
 
-Output: `build/pocs/heavens_gate/Release/heavens_gate.exe`
+Output: `build/pocs/Release/unified.exe`
 
-Excluded when `SND_CRTLESS=ON` (only `loader_noCRT_nowinapi` builds).
+CRT-less builds retain the unified command dispatcher with the SDK-free frontend and native backends. Heaven's Gate remains available only in x86 builds.
 
 ## OpSec impact
 
@@ -82,5 +83,5 @@ Bypasses 32-bit userland hooks during the transition. The PoC uses visible `Virt
 
 ## See also
 
-- [Heaven's Gate API](../domains/primitives/execution/heavens_gate.md)
-- [Execution domain](../domains/primitives/execution/README.md)
+- [Heaven's Gate API](../primitives/execution/heavens_gate.md)
+- [Execution domain](../primitives/execution/README.md)

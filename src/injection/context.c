@@ -2,22 +2,27 @@
 #include <sindri/injection/context.h>
 
 const char *snd_inj_stage_to_string(snd_inj_stage_t stage) {
+#if SND_DEBUG
     switch (stage) {
     case SND_INJ_STAGE_UNINITIALIZED:
-        return SND_FALLBACK_STR("UNINITIALIZED");
+        return "UNINITIALIZED";
     case SND_INJ_STAGE_TARGET_ACQUIRED:
-        return SND_FALLBACK_STR("TARGET_ACQUIRED");
+        return "TARGET_ACQUIRED";
     case SND_INJ_STAGE_MEMORY_ALLOCATED:
-        return SND_FALLBACK_STR("MEMORY_ALLOCATED");
+        return "MEMORY_ALLOCATED";
     case SND_INJ_STAGE_PAYLOAD_WRITTEN:
-        return SND_FALLBACK_STR("PAYLOAD_WRITTEN");
+        return "PAYLOAD_WRITTEN";
     case SND_INJ_STAGE_PROTECTIONS_SET:
-        return SND_FALLBACK_STR("PROTECTIONS_SET");
+        return "PROTECTIONS_SET";
     case SND_INJ_STAGE_EXECUTED:
-        return SND_FALLBACK_STR("EXECUTED");
+        return "EXECUTED";
     default:
-        return SND_FALLBACK_STR("UNKNOWN");
+        return "UNKNOWN";
     }
+#else
+    (void)stage;
+    return "";
+#endif
 }
 
 void snd_inj_cleanup(snd_inj_ctx_t *ctx) {

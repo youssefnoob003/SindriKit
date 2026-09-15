@@ -22,8 +22,8 @@ In-memory Common Object File Format (COFF) parsing. Public headers under `includ
 
 ## Table of Contents
 
-- [techniques.md](techniques.md) — COFF format, string table mechanics, bounds model
-- [api_reference.md](api_reference.md) — full public COFF API
+- [internals.md](internals.md) — COFF format, string table mechanics, bounds model
+- [api_reference.md](../../api_reference.md) — full public COFF API
 
 ## Related documentation
 

@@ -2,7 +2,7 @@
 
 **Location:** `scripts/generate_hashes.py`
 
-This script is the core of SindriKit's compile-time API hashing pipeline. CMake invokes it at configure time. Its output is **`sindri_hashes.h`** in the **build tree** (`${CMAKE_BINARY_DIR}/generated/sindri_hashes.h`), exposed to targets via `target_include_directories(... ${CMAKE_CURRENT_BINARY_DIR}/generated)`. Source includes it as `#include <sindri_hashes.h>`.
+This script is the core of SindriKit's compile-time API hashing pipeline. CMake invokes it at configure time. Its output is **`sindri_hashes.h`** in the **build tree** (`${CMAKE_BINARY_DIR}/generated/sindri_hashes.h`), exposed to targets through their generated include directory. Source includes it as `#include <sindri_hashes.h>`.
 
 ## Purpose
 
@@ -47,7 +47,7 @@ To support aggressive incremental builds without sacrificing opsec agility, the 
 2. It attempts to read the existing `sindri_hashes.h` from disk.
 3. If the contents are a perfect 1:1 match, the script cleanly exits **without touching the file**, preserving the disk modification timestamp.
 
-Because the timestamp remains unmodified, ninja and MSBuild correctly deduce that dependent C files do not need to recompile, vastly improving developer velocity when `SND_RANDOMIZE_SEED=OFF`.
+Because the timestamp remains unmodified, incremental builds can avoid unnecessary recompilation when `SND_RANDOMIZE_SEED=OFF`. The header is regenerated when CMake configures or reconfigures; it is not a standalone build target.
 
 ## Output Format
 

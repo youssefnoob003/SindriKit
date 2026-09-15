@@ -1,6 +1,8 @@
-#include <sindri/common/status.h>
+#include <sindri/internal/windows/types.h>
+#include <sindri/parsers/env/peb.h>
 #include <sindri/primitives/heavens_gate.h>
-#include <windows.h>
+#include <sindri/status.h>
+#include <sindri/status/core.h>
 
 #if defined(_WIN64)
 
@@ -8,7 +10,8 @@ BOOL snd_is_wow64(void) {
     return FALSE;
 }
 
-snd_status_t snd_hg_execute_64(UINT64 pFunctionAddress, DWORD dwArgCount, const UINT64 *pArgs, UINT64 *pResult) {
+snd_status_t snd_hg_execute_64(ULONGLONG pFunctionAddress, DWORD dwArgCount, const ULONGLONG *pArgs,
+                               ULONGLONG *pResult) {
     (void)pFunctionAddress;
     (void)dwArgCount;
     (void)pArgs;
@@ -22,37 +25,36 @@ snd_status_t snd_hg_execute_64(UINT64 pFunctionAddress, DWORD dwArgCount, const 
  * External linkage: the MASM x86 Heaven's Gate bridge.
  * The ASM expects a strict 6-element array to prevent memory violations.
  * ------------------------------------------------------------------------- */
-extern UINT64 snd_hg_invoke_x86(UINT64 pFunctionAddress, const UINT64 *pArgs);
+extern ULONGLONG snd_hg_invoke_x86(ULONGLONG pFunctionAddress, const ULONGLONG *pArgs);
 
 BOOL snd_is_wow64(void) {
-    void *pWow32Reserved = (void *)__readfsdword(0xC0);
-    return (pWow32Reserved != NULL);
+    return (snd_env_get_wow32_reserved() != NULL);
 }
 
-snd_status_t snd_hg_execute_64(UINT64 pFunctionAddress, DWORD dwArgCount, const UINT64 *pArgs, UINT64 *pResult) {
-    if (pFunctionAddress == 0) {
-        return SND_ERR(SND_STATUS_NULL_POINTER);
-    }
+snd_status_t snd_hg_execute_64(ULONGLONG pFunctionAddress, DWORD dwArgCount, const ULONGLONG *pArgs,
+                               ULONGLONG *pResult) {
+    SND_CHECK_NULL(pFunctionAddress);
 
-    // Enforce a maximum of 6 arguments to align with our static ASM wrapper
-    if (dwArgCount > 6) {
-        return SND_ERR_CTX(SND_STATUS_TOO_MANY_ARGUMENTS, "Heaven's Gate bridge supports a maximum of 6 arguments.");
+    // Enforce maximum argument count supported by static ASM wrapper
+    if (dwArgCount > SND_HG_MAX_ARGS) {
+        return SND_ERR_CTX(SND_STATUS_TOO_MANY_ARGUMENTS, "Heaven's Gate bridge supports a maximum of %d arguments.",
+                           SND_HG_MAX_ARGS);
     }
 
     if (dwArgCount > 0 && pArgs == NULL) {
-        return SND_ERR(SND_STATUS_NULL_POINTER);
+        return SND_ERR(SND_STATUS_INVALID_PARAMETERS_COMBINATION);
     }
 
     if (!snd_is_wow64()) {
         return SND_ERR(SND_STATUS_ARCH_MISMATCH);
     }
 
-    UINT64 safe_args[6] = {0};
+    ULONGLONG safe_args[SND_HG_MAX_ARGS] = {0};
     for (DWORD i = 0; i < dwArgCount; i++) {
         safe_args[i] = pArgs[i];
     }
 
-    UINT64 result = snd_hg_invoke_x86(pFunctionAddress, safe_args);
+    ULONGLONG result = snd_hg_invoke_x86(pFunctionAddress, safe_args);
     if (pResult) {
         *pResult = result;
     }

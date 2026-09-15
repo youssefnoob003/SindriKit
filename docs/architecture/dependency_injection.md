@@ -68,15 +68,34 @@ There is **no** `snd_mod_sys`. Import resolution during reflective load uses PEB
 
 **Global instances:** `snd_proc_win`, `snd_proc_nt`, `snd_proc_sys` — `include/sindri/primitives/process.h`
 
+### Files (`snd_file_api_t`)
+
+| Callback | Role |
+|---|---|
+| `load` | Read entire file into a `snd_buffer_t` |
+
+**Global instances:** `snd_file_win`, `snd_file_nt`, `snd_file_sys` — `include/sindri/primitives/files.h`
+
+### Threads (`snd_thread_api_t`)
+
+| Callback | Role |
+|---|---|
+| `queue_apc` | Queue asynchronous procedure call to thread |
+| `resume_thread` | Resume suspended thread execution |
+| `suspend_thread` | Suspend running thread |
+| `close_handle` | Release thread handle |
+
+**Global instances:** `snd_thread_win`, `snd_thread_nt`, `snd_thread_sys` — `include/sindri/primitives/thread.h`
+
 ---
 
 ## Backend naming convention
 
 | Suffix | Paradigm | Available for |
 |---|---|---|
-| `_win` | Documented Win32 APIs | memory, modules, mapping, process |
-| `_nt` | NT function pointers resolved via PEB walk + EAT parse | memory, modules, mapping, process |
-| `_sys` | Direct, indirect, or spoofed syscalls (configurable invoker) | memory, mapping, process — **not** modules |
+| `_win` | Documented Win32 APIs | memory, modules, mapping, process, files, thread |
+| `_nt` | NT function pointers resolved via PEB walk + EAT parse | memory, modules, mapping, process, files, thread |
+| `_sys` | Direct, indirect, or spoofed syscalls (configurable invoker) | memory, mapping, process, files, thread — **not** modules |
 
 ### OpSec profile examples
 
@@ -92,13 +111,13 @@ PoC mapping: [Examples OpSec table](../examples/README.md).
 
 ## Syscall bootstrap (prerequisite for `_sys`)
 
-`_sys` backends call `snd_syscall_resolve()` internally. The resolver needs a registered `ntdll` image and a strategy chain:
+`_sys` backends call `snd_syscall_invoke()` internally. The resolver needs a registered `ntdll` image and a strategy chain:
 
 ```c
 PVOID ntdll = NULL;
 snd_om_knowndll_map(&snd_map_nt, L"ntdll.dll", &ntdll);  // or disk / PEB
 
-snd_syscall_set_ntdll(ntdll);
+snd_ntdll_set_clean(ntdll);
 snd_syscall_set_resolver(snd_syscall_resolve_ssn_scan);
 snd_syscall_add_resolver(snd_syscall_resolve_ssn_sort);
 
@@ -111,7 +130,7 @@ snd_syscall_set_invoker(snd_syscall_direct_invoke_asm);
 
 This is **global execution state**, not part of any DI table. Implant init code runs it once; all `_sys` tables benefit.
 
-Details: [Syscalls pipeline](../domains/primitives/syscalls/pipeline.md).
+Details: [Syscalls pipeline](../primitives/syscalls/pipeline.md).
 
 ---
 
@@ -210,8 +229,8 @@ The loader/injection state machines and stage validation remain unchanged.
 ## Rules for new domains
 
 1. Define a context struct holding DI pointers and a `stage` enum.
-2. Validate `stage` before each engine step; return `SND_STATUS_INVALID_STAGE_SEQUENCE` on violation.
+2. Validate `stage` before each engine step; return `SND_STATUS_INVALID_STAGE` on violation.
 3. Expose a chain function for one-shot use and granular engine functions for staged/resumable workflows.
 4. Never import another domain's internals — share behavior through primitives and parsers only.
 
-See [State machines](state_machines.md) and [Domains independence](../domains/README.md).
+See [State machines](state_machines.md) and [Domains independence](../primitives/README.md).

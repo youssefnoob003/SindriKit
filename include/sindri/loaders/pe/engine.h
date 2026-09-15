@@ -3,10 +3,10 @@
 
 #include <sindri/common/buffer.h>
 #include <sindri/common/macros.h>
-#include <sindri/common/status.h>
+#include <sindri/internal/windows/types.h>
 #include <sindri/parsers/pe/parser.h>
 #include <sindri/primitives/os_api.h>
-#include <windows.h>
+#include <sindri/status/core.h>
 
 SND_BEGIN_EXTERN_C
 
@@ -14,9 +14,9 @@ SND_SHUFFLE_START
 typedef struct {
     LPVOID   local_base;
     LPVOID   execution_base;
+    SIZE_T   allocated_size;
     LONG_PTR delta_offset;
     LPVOID   entry_point;
-    SIZE_T   allocated_size;
 } snd_pe_target_t;
 SND_SHUFFLE_END
 
@@ -85,39 +85,95 @@ SND_SHUFFLE_END
         }                                                                                                              \
     } while (0)
 
-/**
- * @brief Validates payload architecture.
- * @param ctx The loader context with parsed PE.
- * @return SND_OK on match, otherwise SND_STATUS_ARCH_MISMATCH.
- */
-snd_status_t snd_ldr_pe_compatibility_check(snd_ldr_pe_ctx_t *ctx);
+SND_FORCE_INLINE const char *snd_ldr_pe_stage_to_string(snd_ldr_pe_stage_t stage) {
+#if SND_DEBUG
+    switch (stage) {
+    case SND_STAGE_UNINITIALIZED:
+        return "UNINITIALIZED";
+    case SND_STAGE_PARSED:
+        return "PARSED";
+    case SND_STAGE_MEM_ALLOCATED:
+        return "MEM_ALLOCATED";
+    case SND_STAGE_SECTIONS_MAPPED:
+        return "SECTIONS_MAPPED";
+    case SND_STAGE_RELOCATED:
+        return "RELOCATED";
+    case SND_STAGE_IMPORTS_RESOLVED:
+        return "IMPORTS_RESOLVED";
+    case SND_STAGE_READY_FOR_EXECUTION:
+        return "READY_FOR_EXECUTION";
+    case SND_STAGE_EXECUTED:
+        return "EXECUTED";
+    default:
+        return "UNKNOWN_CORRUPTED";
+    }
+#else
+    (void)stage;
+    return "";
+#endif
+}
 
 /**
  * @brief Allocates memory and copies sections.
  * @param ctx The loader context. ctx->virtual_base will be populated on
  * success.
- * @return SND_OK on success, otherwise an allocation error.
+ * @retval SND_OK On success.
+ * @retval SND_STATUS_NULL_POINTER If @p ctx, the memory API, or its
+ * `alloc` callback is NULL.
+ * @retval SND_STATUS_INVALID_STAGE If the loader stage is invalid.
+ * @retval SND_STATUS_HEADERS_SIZE_INVALID If image headers exceed the source
+ * or target allocation bounds.
+ * @retval SND_STATUS_SECTION_TABLE_MISSING If the section table is absent.
+ * @retval SND_STATUS_SECTION_SIZE_INVALID If a section exceeds the target
+ * allocation.
+ * @retval SND_STATUS_CORRUPTED_STAGE If the parsed source or image size is
+ * invalid.
+ * @retval SND_STATUS_IMAGE_SIZE_NULL If `SizeOfImage` is zero.
+ * @retval Any error returned by `snd_memory_api_t::alloc` or
+ * `snd_pe_parse` while mapping the image.
  */
 snd_status_t snd_ldr_pe_allocate_and_copy_image(snd_ldr_pe_ctx_t *ctx);
 
 /**
  * @brief Applies base relocation fixups.
  * @param ctx The loader context containing the mapped virtual base.
- * @return SND_OK on success, otherwise a relocation error.
+ * @retval SND_OK On success.
+ * @retval SND_STATUS_NULL_POINTER If @p ctx is NULL.
+ * @retval SND_STATUS_INVALID_STAGE If the loader stage is invalid.
+ * @retval SND_STATUS_CORRUPTED_STAGE If the mapped image state is invalid.
+ * @retval SND_STATUS_RELOCATION_DIRECTORY_MISSING If relocations are required
+ * but the relocation directory is absent.
+ * @retval SND_STATUS_RELOCATION_DIRECTORY_STRIPPED If relocations are stripped.
+ * @retval SND_STATUS_RELOCATION_TYPE_INVALID If a relocation type is unsupported.
+ * @retval Any error returned by `snd_pe_get_directory`,
+ * `snd_pe_get_reloc_block`, or `snd_pe_get_reloc_entry`.
  */
 snd_status_t snd_ldr_pe_apply_relocations(snd_ldr_pe_ctx_t *ctx);
 
 /**
  * @brief Resolves imports and patches IAT.
  * @param ctx The loader context.
- * @return SND_OK on success, otherwise a resolution error.
+ * @retval SND_OK On success.
+ * @retval SND_STATUS_NULL_POINTER If @p ctx, the module API, or one of its
+ * required callbacks is NULL.
+ * @retval SND_STATUS_INVALID_STAGE If the loader stage is invalid.
+ * @retval SND_STATUS_CORRUPTED_STAGE If the mapped image state is invalid.
+ * @retval Any error returned by `snd_pe_get_import_descriptor`,
+ * `snd_pe_get_import_name`, `snd_pe_get_import_thunk`,
+ * `snd_module_api_t::load_library`, or
+ * `snd_module_api_t::get_proc_address`.
  */
 snd_status_t snd_ldr_pe_resolve_imports(snd_ldr_pe_ctx_t *ctx);
 
 /**
  * @brief Applies final section page protections.
  * @param ctx The loader context.
- * @return SND_OK on success, otherwise a protection error.
+ * @retval SND_OK On success.
+ * @retval SND_STATUS_NULL_POINTER If @p ctx, the memory API, or its
+ * `protect` callback is NULL.
+ * @retval SND_STATUS_INVALID_STAGE If the loader stage is invalid.
+ * @retval SND_STATUS_CORRUPTED_STAGE If the mapped image state is invalid.
+ * @retval Any error returned by `snd_memory_api_t::protect`.
  */
 snd_status_t snd_ldr_pe_apply_memory_protections(snd_ldr_pe_ctx_t *ctx);
 
@@ -129,20 +185,17 @@ snd_status_t snd_ldr_pe_apply_memory_protections(snd_ldr_pe_ctx_t *ctx);
 void snd_ldr_pe_execute_tls_callbacks(snd_ldr_pe_ctx_t *ctx, DWORD reason);
 
 /**
- * @brief Resolves the entry point pointer.
- * @param ctx The loader context.
- * @return SND_OK on success, error code on failure.
- */
-snd_status_t snd_ldr_pe_get_entry_point(snd_ldr_pe_ctx_t *ctx);
-
-/**
  * @brief Resolves an exported symbol address.
  * @param ctx The loader context.
  * @param func_name Export name to resolve.
  * @param func_addr_out Receives resolved export pointer.
- * @return SND_OK on success, error code on failure.
+ * @retval SND_OK On success.
+ * @retval SND_STATUS_NULL_POINTER If @p ctx, @p func_name, or
+ * @p func_addr_out is NULL.
+ * @retval SND_STATUS_INVALID_STAGE If the image is not ready for execution.
+ * @retval Any error returned by `snd_pe_get_export_address`.
  */
-snd_status_t snd_ldr_pe_get_proc_address(snd_ldr_pe_ctx_t *ctx, const char *func_name, FARPROC *func_addr_out);
+snd_status_t snd_ldr_pe_get_proc_address(const snd_ldr_pe_ctx_t *ctx, const char *func_name, FARPROC *func_addr_out);
 
 /**
  * @brief Frees memory associated with the mapped pe image.

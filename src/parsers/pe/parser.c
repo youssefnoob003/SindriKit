@@ -1,106 +1,125 @@
-#include <sindri/common/macros.h>
-#include <sindri/common/status.h>
+#include <sindri/common/buffer.h>
+#include <sindri/common/memory.h>
+#include <sindri/internal/windows/pe.h>
 #include <sindri/parsers/pe/parser.h>
+#include <sindri/parsers/pe/status.h>
 #include <sindri/parsers/pe/utils.h>
-#include <stddef.h>
-#include <windows.h>
 
-snd_status_t snd_pe_parse(const snd_buffer_t *buf, BOOL is_mapped, snd_pe_parser_t *parser) {
-    if (buf == NULL || buf->data == NULL || buf->size == 0 || parser == NULL) {
-        return SND_ERR(SND_STATUS_NULL_POINTER);
-    }
+snd_status_t snd_pe_parse(const snd_buffer_t *source, BOOL is_mapped, snd_pe_parser_t *parser) {
+    SND_CHECK_NULL(source, source->data, source->size, parser);
 
     snd_memzero(parser, sizeof(snd_pe_parser_t));
-
-    parser->source    = *buf;
+    parser->source    = *source;
     parser->is_mapped = is_mapped;
 
-    if (!snd_buffer_bounds_check(buf, 0, sizeof(IMAGE_DOS_HEADER))) {
-        return SND_ERR(SND_STATUS_DOS_HEADER_TRUNCATED);
+    if (!snd_buffer_bounds_check(source, 0, sizeof(SND_IMAGE_DOS_HEADER))) {
+        return SND_ERR_CTX(SND_STATUS_HEADER_DOS_TRUNCATED, "Buffer size (%zu) smaller than SND_IMAGE_DOS_HEADER (%zu)",
+                           source->size, sizeof(SND_IMAGE_DOS_HEADER));
     }
 
-    parser->dos = (PIMAGE_DOS_HEADER)buf->data;
-    if (parser->dos->e_magic != IMAGE_DOS_SIGNATURE) {
-        return SND_ERR(SND_STATUS_INVALID_DOS_SIGNATURE);
+    parser->dos = (PSND_IMAGE_DOS_HEADER)source->data;
+    if (parser->dos->e_magic != SND_IMAGE_DOS_SIGNATURE) {
+        return SND_ERR_CTX(SND_STATUS_HEADER_DOS_SIGNATURE_INVALID,
+                           "e_magic 0x%04X != SND_IMAGE_DOS_SIGNATURE (0x%04X)", parser->dos->e_magic,
+                           SND_IMAGE_DOS_SIGNATURE);
     }
 
-    if (parser->dos->e_lfanew < 0) {
-        return SND_ERR(SND_STATUS_INVALID_NT_HEADER_OFFSET);
+    LONG raw_lfanew = parser->dos->e_lfanew;
+    if (raw_lfanew < 0) {
+        return SND_ERR_CTX(SND_STATUS_HEADER_OFFSET_INVALID, "e_lfanew (%ld) cannot be negative", raw_lfanew);
     }
 
-    SIZE_T nt_off         = (SIZE_T)parser->dos->e_lfanew;
-    SIZE_T req_magic_size = sizeof(DWORD) + sizeof(IMAGE_FILE_HEADER) + sizeof(WORD);
-    if (!snd_buffer_bounds_check(buf, nt_off, req_magic_size)) {
-        return SND_ERR(SND_STATUS_NT_HEADERS_TRUNCATED);
+    parser->lfanew        = (SIZE_T)raw_lfanew;
+    SIZE_T req_magic_size = sizeof(DWORD) + sizeof(SND_IMAGE_FILE_HEADER) + sizeof(WORD);
+
+    if (!snd_buffer_bounds_check(source, parser->lfanew, req_magic_size)) {
+        return SND_ERR_CTX(SND_STATUS_HEADER_NT_TRUNCATED, "e_lfanew 0x%zx + core headers exceeds buffer size 0x%zx",
+                           parser->lfanew, source->size);
     }
 
-    PIMAGE_NT_HEADERS32 nt_chk = (PIMAGE_NT_HEADERS32)SND_PTR_ADD(buf->data, nt_off);
-    if (nt_chk->Signature != IMAGE_NT_SIGNATURE) {
-        return SND_ERR(SND_STATUS_INVALID_NT_SIGNATURE);
+    PSND_IMAGE_NT_HEADERS32 nt_chk = (PSND_IMAGE_NT_HEADERS32)SND_PTR_ADD(source->data, parser->lfanew);
+    if (nt_chk->Signature != SND_IMAGE_NT_SIGNATURE) {
+        return SND_ERR_CTX(SND_STATUS_HEADER_NT_SIGNATURE_INVALID,
+                           "NT signature 0x%08X != SND_IMAGE_NT_SIGNATURE (0x%08X)", nt_chk->Signature,
+                           SND_IMAGE_NT_SIGNATURE);
     }
 
     WORD   optional_magic   = nt_chk->OptionalHeader.Magic;
-    SIZE_T required_nt_size = sizeof(DWORD) + sizeof(IMAGE_FILE_HEADER);
+    SIZE_T required_nt_size = sizeof(DWORD) + sizeof(SND_IMAGE_FILE_HEADER);
 
-    if (optional_magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC) {
-        required_nt_size += offsetof(IMAGE_OPTIONAL_HEADER64, DataDirectory);
-        if (!snd_buffer_bounds_check(buf, nt_off, required_nt_size)) {
-            return SND_ERR(SND_STATUS_NT_HEADERS_TRUNCATED);
+    if (optional_magic == SND_IMAGE_NT_OPTIONAL_HDR64_MAGIC) {
+        required_nt_size += offsetof(SND_IMAGE_OPTIONAL_HEADER64, DataDirectory);
+
+        if (!snd_buffer_bounds_check(source, parser->lfanew, required_nt_size)) {
+            return SND_ERR_CTX(SND_STATUS_HEADER_NT_TRUNCATED, "Buffer size truncated before 64-bit NT header");
         }
-        parser->is_64bit       = TRUE;
-        parser->nt.nt64        = (PIMAGE_NT_HEADERS64)nt_chk;
-        parser->is_dll         = (parser->nt.nt64->FileHeader.Characteristics & IMAGE_FILE_DLL) != 0;
-        parser->sections_count = parser->nt.nt64->FileHeader.NumberOfSections;
-    } else if (optional_magic == IMAGE_NT_OPTIONAL_HDR32_MAGIC) {
-        required_nt_size += offsetof(IMAGE_OPTIONAL_HEADER32, DataDirectory);
-        if (!snd_buffer_bounds_check(buf, nt_off, required_nt_size)) {
-            return SND_ERR(SND_STATUS_NT_HEADERS_TRUNCATED);
+        parser->is_64bit = TRUE;
+        parser->nt.nt64  = (PSND_IMAGE_NT_HEADERS64)nt_chk;
+    } else if (optional_magic == SND_IMAGE_NT_OPTIONAL_HDR32_MAGIC) {
+        required_nt_size += offsetof(SND_IMAGE_OPTIONAL_HEADER32, DataDirectory);
+
+        if (!snd_buffer_bounds_check(source, parser->lfanew, required_nt_size)) {
+            return SND_ERR_CTX(SND_STATUS_HEADER_NT_TRUNCATED, "Buffer size truncated before 32-bit NT header");
         }
-        parser->is_64bit       = FALSE;
-        parser->nt.nt32        = nt_chk;
-        parser->is_dll         = (parser->nt.nt32->FileHeader.Characteristics & IMAGE_FILE_DLL) != 0;
-        parser->sections_count = parser->nt.nt32->FileHeader.NumberOfSections;
+        parser->is_64bit = FALSE;
+        parser->nt.nt32  = nt_chk;
     } else {
-        return SND_ERR(SND_STATUS_UNSUPPORTED_OPTIONAL_HEADER_MAGIC);
+        return SND_ERR_CTX(SND_STATUS_HEADER_OPTIONAL_SIGNATURE_INVALID,
+                           "OptionalHeader.Magic 0x%04X not PE32 (0x010B) or PE32+ (0x020B)", optional_magic);
     }
 
-    SIZE_T fixed_headers_size = offsetof(IMAGE_NT_HEADERS32, OptionalHeader);
-    WORD   opt_header_size    = SND_PE_GET_NT_FIELD(parser, FileHeader.SizeOfOptionalHeader);
+    parser->is_dll         = (SND_PE_GET_NT_FIELD(parser, FileHeader.Characteristics) & SND_IMAGE_FILE_DLL) != 0;
+    parser->sections_count = SND_PE_GET_NT_FIELD(parser, FileHeader.NumberOfSections);
 
-    if (fixed_headers_size + opt_header_size > buf->size ||
-        nt_off > buf->size - (fixed_headers_size + opt_header_size)) {
+    SIZE_T fixed_headers_size = offsetof(SND_IMAGE_NT_HEADERS32, OptionalHeader);
+    WORD   opt_header_size    = SND_PE_GET_NT_FIELD(parser, FileHeader.SizeOfOptionalHeader);
+    SIZE_T total_header_size  = fixed_headers_size + opt_header_size;
+
+    if (parser->is_mapped && parser->source.size == SND_SYS_DLL_SIZE_DEFAULT) {
+        SIZE_T image_size = SND_PE_GET_NT_FIELD(parser, OptionalHeader.SizeOfImage);
+        if (image_size > 0) {
+            parser->source.size = image_size;
+        }
+    }
+
+    if (SND_RANGE_EXCEEDS(parser->lfanew, total_header_size, parser->source.size)) {
         parser->sections_count = 0;
         parser->section_head   = NULL;
     } else {
-        SIZE_T section_table_off = nt_off + fixed_headers_size + opt_header_size;
-        SIZE_T available_space   = buf->size - section_table_off;
-        DWORD  max_sections      = (DWORD)(available_space / sizeof(IMAGE_SECTION_HEADER));
+        SIZE_T section_table_off = parser->lfanew + total_header_size;
+        SIZE_T available_space   = parser->source.size - section_table_off;
+        DWORD  max_sections      = (DWORD)(available_space / sizeof(SND_IMAGE_SECTION_HEADER));
+
         if (parser->sections_count > max_sections) {
             parser->sections_count = max_sections;
         }
-        parser->section_head = (PIMAGE_SECTION_HEADER)SND_PTR_ADD(buf->data, section_table_off);
+        parser->section_head = (PSND_IMAGE_SECTION_HEADER)SND_PTR_ADD(parser->source.data, section_table_off);
     }
+
+    parser->string_table = NULL;
 
     if (!is_mapped) {
         DWORD symbol_table_off = SND_PE_GET_NT_FIELD(parser, FileHeader.PointerToSymbolTable);
         DWORD symbol_count     = SND_PE_GET_NT_FIELD(parser, FileHeader.NumberOfSymbols);
+
         if (symbol_table_off != 0 && symbol_count != 0) {
             ULONGLONG string_table_off =
-                (ULONGLONG)symbol_table_off + (ULONGLONG)IMAGE_SIZEOF_SYMBOL * (ULONGLONG)symbol_count;
-            if (snd_memory_bounds_check(buf->size, (SIZE_T)string_table_off, sizeof(DWORD))) {
-                parser->string_table = SND_PTR_ADD(buf->data, (SIZE_T)string_table_off);
+                (ULONGLONG)symbol_table_off + ((ULONGLONG)SND_IMAGE_SIZEOF_SYMBOL * (ULONGLONG)symbol_count);
+
+            if (string_table_off <= (ULONGLONG)SIZE_MAX &&
+                snd_buffer_bounds_check(&parser->source, (SIZE_T)string_table_off, sizeof(DWORD))) {
+                parser->string_table = SND_PTR_ADD(parser->source.data, (SIZE_T)string_table_off);
             }
         }
     }
 
-    IMAGE_DATA_DIRECTORY import_dir = {0};
-    snd_pe_get_directory(parser, IMAGE_DIRECTORY_ENTRY_IMPORT, &import_dir);
+    SND_IMAGE_DATA_DIRECTORY import_dir = {0};
+    snd_pe_get_directory(parser, SND_IMAGE_DIRECTORY_ENTRY_IMPORT, &import_dir);
     parser->imports_rva = import_dir.VirtualAddress;
     parser->import_size = import_dir.Size;
 
     if (parser->imports_rva == 0) {
         parser->import_size = 0;
-        return SND_OK;
     }
 
     return SND_OK;

@@ -1,6 +1,6 @@
-# Test Payloads (`tests/loader/src/`)
+# Test Payloads (`tests/loaders/`)
 
-**Location:** `tests/loader/src/`
+**Locations:** `tests/loaders/pe/src/` and `tests/loaders/coff/src/`
 
 These C source files are compiled into DLL and EXE payloads that the test runner feeds to the pe loaders. Each payload is designed to validate a specific capability of the loading pipeline from basic FFI argument passing to TLS callback execution.
 
@@ -92,4 +92,3 @@ A Beacon Object File designed to validate argument parsing using the standard BO
 - **Data parsing:** Validates the extraction of `int` and `short` data from the packed argument buffer.
 
 *(Note: BOF support currently assumes standard `beacon.h` compatibility where applicable.)*
-

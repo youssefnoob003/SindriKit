@@ -14,4 +14,4 @@ Automated testing infrastructure for validating the loaders pipeline (PE, COFF) 
 ## Related documentation
 
 - [Building SindriKit](../getting_started/building.md) — `SND_BUILD_TESTS` option
-- [Loaders domain](../domains/loaders/README.md)
+- [Loaders domain](../loaders/README.md)

@@ -1,6 +1,7 @@
-# PoC: loader_winapi
+# Example: Win32-backed PE loading
 
-**Location:** `pocs/loader_winapi/`
+**Command implementation:** `pocs/src/cmd_load_pe.c`
+**Invocation:** `unified load pe ... --win`
 
 Diagnostic baseline for the reflective PE loader. Every memory and module operation uses standard Win32 APIs (`VirtualAlloc`, `LoadLibraryA`, etc.). Intended for pipeline validation and debugging — not operational deployment.
 
@@ -14,7 +15,7 @@ Diagnostic baseline for the reflective PE loader. Every memory and module operat
 ## Command-line usage
 
 ```text
-loader_winapi -f <payload_path> [-e <export_name>] [-a <arg>]...
+unified load pe -f <payload_path> [-e <export_name>] [-a <arg>]... --win
 
   -f   Path to PE payload (DLL or EXE)
   -e   Export name (required for DLL payloads after DllMain)
@@ -30,13 +31,13 @@ loader_winapi -f <payload_path> [-e <export_name>] [-a <arg>]...
 
 ```bash
 # Run a reflective EXE payload locally
-loader_winapi.exe -f payload.exe
+unified.exe load pe -f payload.exe --win
 
 # Load DLL, run DllMain, then call an export with two numeric args
-loader_winapi.exe -f payload.dll -e Run -a 0x1 -a 0x2
+unified.exe load pe -f payload.dll -e Run -a 0x1 -a 0x2 --win
 
 # Pass a string pointer argument
-loader_winapi.exe -f payload.dll -e PrintMsg -a "hello"
+unified.exe load pe -f payload.dll -e PrintMsg -a "hello" --win
 ```
 
 ## Walkthrough
@@ -47,7 +48,7 @@ loader_winapi.exe -f payload.dll -e PrintMsg -a "hello"
 snd_buffer_t     file_buf = {0};
 snd_ldr_pe_ctx_t ctx      = {0};
 
-status = snd_disk_buffer_load(file_path, &file_buf);
+status = snd_file_win.load(file_path, &file_buf);
 ctx.raw_source = &file_buf;
 ```
 
@@ -98,5 +99,5 @@ Maximum telemetry: every allocation, protection change, and import resolution is
 
 ## See also
 
-- [Loaders techniques](../domains/loaders/techniques.md)
+- [Loaders techniques](../loaders/internals.md)
 - [loader_nowinapi.md](loader_nowinapi.md) — NT API profile

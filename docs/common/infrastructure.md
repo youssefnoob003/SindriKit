@@ -1,6 +1,6 @@
 # Common Infrastructure
 
-Conceptual overview of the shared utilities in `include/sindri/common/`. For function signatures see [api_reference.md](api_reference.md).
+Conceptual overview of the shared utilities in `include/sindri/common/`. For function signatures see [api_reference.md](../api_reference.md).
 
 ---
 
@@ -15,14 +15,39 @@ include/sindri/common/
 ├── string.h      <- ASCII + wide string helpers (new wide APIs)
 ├── buffer.h      <- tracked buffers
 ├── hash.h
-├── status.h
 ├── debug.h       <- debug macros (was mixed into helpers)
-└── disk.h
+└── opcodes.h
 
-include/sindri/internal/nt/   <- was sindri/internal/nt_defs.h
-├── types.h       <- NT structs, SND_PAGE_SIZE, unicode init
-├── api.h         <- Nt* typedefs
-└── peb.h         <- PEB / LDR layouts
+include/sindri/status/
+├── core.h        <- snd_status_t, core codes, error macros
+└── facility.h    <- facility identifiers and encoding helpers
+
+include/sindri/internal/windows/
+├── types.h       <- ABI types and SDK boundary
+├── constants.h   <- PAGE_*, MEM_*, GENERIC_READ, DLL_PROCESS_* (shared by Win32 and NT)
+├── image.h       <- structures shared by PE and COFF
+├── pe.h          <- PE-specific image definitions
+└── coff.h        <- COFF-specific definitions
+
+include/sindri/internal/win32/
+├── constants.h   <- Win32-only CreateFile/Heap flags (includes windows/constants.h)
+└── api.h         <- native declarations for Win32-backed code
+
+include/sindri/internal/nt/
+├── base.h        <- NT structures, status helpers, Unicode initialization
+├── file.h        <- I/O status and file-information layouts
+├── process.h     <- process/thread access and NtCreateUserProcess layouts
+├── api.h         <- Nt* function pointer types
+└── peb.h         <- PEB / loader layouts
+```
+
+File acquisition is an OS capability, not common infrastructure:
+
+```text
+include/sindri/primitives/files.h
+src/primitives/files/win.c
+src/primitives/files/nt.c
+src/primitives/files/sys.c
 ```
 
 ---
@@ -127,20 +152,25 @@ When `SND_DEBUG=0`, context formatting is stripped — only integers remain. See
 
 ## Disk I/O
 
-`snd_disk_buffer_load` reads a full file into a heap buffer with `snd_buffer_free_heap`. Used by PoCs; production implants typically receive payloads over the network into pre-allocated buffers.
+The file primitive tables load a full file into a tracked buffer. `snd_file_win` uses Win32 file APIs; `snd_file_nt` uses native NTDLL exports; and `snd_file_sys` invokes the configured syscall pipeline directly. The native and syscall variants use their corresponding memory backend for buffer allocation. Production implants can bypass file loading and provide pre-allocated buffers directly.
 
 ---
 
 ## Internal NT types (moved from common)
 
-NT-specific constants and layouts no longer live under `common/`. Key items in `internal/nt/types.h`:
+NT-specific constants and layouts do not live under `common/`. Key items in `internal/nt/base.h`:
 
 | Symbol | Purpose |
 |---|---|
 | `SND_NT_SUCCESS(status)` | NTSTATUS success test |
-| `SND_PAGE_SIZE` | `0x1000` |
 | `SND_OBJ_CASE_INSENSITIVE` | Object Manager attribute flag |
 | `SND_InitializeObjectAttributes` | Initialize `SND_OBJECT_ATTRIBUTES` |
 | `snd_init_unicode_string` | Build `SND_UNICODE_STRING` from wide buffer + length |
 
-Function typedefs (`SND_NtOpenSection_t`, etc.) are in `internal/nt/api.h`. PEB structures are in `internal/nt/peb.h`.
+Function typedefs (`SND_NtOpenSection_t`, etc.) are in `internal/nt/api.h`. Process/thread access and `NtCreateUserProcess` layouts are in `internal/nt/process.h`; PEB structures are in `internal/nt/peb.h`.
+
+## Windows SDK boundary
+
+The engine contains both SDK-backed Win32 implementations and SDK-free native/syscall implementations. SDK-backed source files opt in with `SND_USE_WINDOWS_SDK=1`; `internal/windows/types.h` then imports `<windows.h>` and the real Win32 declarations. Native sources omit the macro and use the project-owned ABI declarations.
+
+This is a source-level build contract, not a replacement API: functions such as `CreateFileA`, `ReadFile`, `VirtualFree`, and `HeapAlloc` remain the actual Windows functions in SDK-backed files.

@@ -3,8 +3,8 @@
 
 #include <sindri/common/buffer.h>
 #include <sindri/common/macros.h>
-#include <sindri/common/status.h>
-#include <windows.h>
+#include <sindri/internal/windows/pe.h>
+#include <sindri/status/core.h>
 
 SND_BEGIN_EXTERN_C
 
@@ -39,12 +39,10 @@ SND_BEGIN_EXTERN_C
  * field, the parser will adopt it blindly. You must ensure downstream consumers
  * of this parser handle an oversized virtual layout gracefully.
  *
- * ! CRITICAL LIFECYCLE MANDATE:
- * Immediately after `snd_pe_parse` succeeds, you MUST extract the actual
- * `OptionalHeader.SizeOfImage` and update the parser context's buffer size
- * to encompass the full image layout. Leaving it clamped at 0x1000 will cause
- * all subsequent directory parsing (imports, exports, relocations) to be
- * rejected as out-of-bounds.
+ * ! AUTOMATIC BUFFER SIZE EXPANSION:
+ * When `snd_pe_parse` is invoked with `is_mapped = TRUE` and the input buffer size
+ * matches `SND_SYS_DLL_SIZE_DEFAULT`, `snd_pe_parse` automatically expands
+ * `parser->source.size` to `OptionalHeader.SizeOfImage`.
  */
 #define SND_SYS_DLL_SIZE_DEFAULT 0x1000
 
@@ -57,17 +55,16 @@ SND_BEGIN_EXTERN_C
  */
 SND_SHUFFLE_START
 typedef struct {
-    snd_buffer_t source; // Backing buffer containing the raw or mapped PE data.
+    snd_buffer_t source;
 
-    PIMAGE_DOS_HEADER dos;
+    PSND_IMAGE_DOS_HEADER dos;
 
     union {
-        PIMAGE_NT_HEADERS32 nt32;
-        PIMAGE_NT_HEADERS64 nt64;
+        PSND_IMAGE_NT_HEADERS32 nt32;
+        PSND_IMAGE_NT_HEADERS64 nt64;
     } nt;
 
-    PIMAGE_SECTION_HEADER
-    section_head; // Points to the first element in the section header array.
+    PSND_IMAGE_SECTION_HEADER section_head;
 
     /**
      * @brief Points to the COFF String Table (used for long section names).
@@ -87,9 +84,10 @@ typedef struct {
      */
     BOOL is_mapped;
 
-    DWORD sections_count;
-    DWORD imports_rva;
-    DWORD import_size;
+    SIZE_T lfanew;
+    DWORD  sections_count;
+    DWORD  imports_rva;
+    DWORD  import_size;
 } snd_pe_parser_t;
 SND_SHUFFLE_END
 
@@ -105,17 +103,24 @@ SND_SHUFFLE_END
  *
  * @note This function performs **zero-copy parsing**. The pointers populated
  * inside the `parser` context point directly into the memory space owned by the
- * input `buf`. No heap allocations are performed. Consequently, the lifecycle
+ * input `source`. No heap allocations are performed. Consequently, the lifecycle
  * of the populated `parser` structure is strictly bound to the lifetime and
- * validity of the underlying `buf`.
+ * validity of the underlying `source`.
  *
- * @param buf Raw buffer containing the PE file data.
+ * @param source Raw buffer containing the PE file data.
  * @param is_mapped TRUE if the buffer represents an already virtually aligned
  * image, FALSE if it is a raw disk file layout.
  * @param parser Pointer to the parser context to populate.
- * @return SND_OK on success, or a contextual error status.
+ *
+ * @retval SND_OK On successful parsing and context population.
+ * @retval SND_STATUS_HEADER_DOS_TRUNCATED If the buffer is smaller than a DOS header.
+ * @retval SND_STATUS_HEADER_DOS_SIGNATURE_INVALID If the MZ signature is missing or incorrect.
+ * @retval SND_STATUS_HEADER_OFFSET_INVALID If the NT header offset (e_lfanew) is negative.
+ * @retval SND_STATUS_HEADER_NT_TRUNCATED If the buffer is truncated before or within NT headers.
+ * @retval SND_STATUS_HEADER_NT_SIGNATURE_INVALID If the PE signature is missing or incorrect.
+ * @retval SND_STATUS_HEADER_OPTIONAL_SIGNATURE_INVALID If the optional header magic is unknown.
  */
-snd_status_t snd_pe_parse(const snd_buffer_t *buf, BOOL is_mapped, snd_pe_parser_t *parser);
+snd_status_t snd_pe_parse(const snd_buffer_t *source, BOOL is_mapped, snd_pe_parser_t *parser);
 
 SND_END_EXTERN_C
 

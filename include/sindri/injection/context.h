@@ -4,8 +4,8 @@
 #include <sindri/common/buffer.h>
 #include <sindri/common/debug.h>
 #include <sindri/common/macros.h>
+#include <sindri/internal/windows/types.h>
 #include <sindri/primitives/os_api.h>
-#include <windows.h>
 
 SND_BEGIN_EXTERN_C
 
@@ -39,11 +39,14 @@ SND_SHUFFLE_END
 
 /**
  * @brief Converts an injection stage enum to a human-readable string.
+ * @param stage Injection stage value.
+ * @retval Pointer to a null-terminated stage description.
  */
 const char *snd_inj_stage_to_string(snd_inj_stage_t stage);
 
 /**
  * @brief Cleans up injection context: closes handles, resets state.
+ * @param ctx Injection context to clean up.
  */
 void snd_inj_cleanup(snd_inj_ctx_t *ctx);
 

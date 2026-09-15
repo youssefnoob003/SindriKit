@@ -1,13 +1,19 @@
-# Test Runner (`tests/loader/test_runner.py`)
+# Loader Test Runners
 
-**Location:** `tests/loader/test_runner.py`
+The loader integration suites invoke the unified PoC rather than the deleted standalone loader executables.
 
-Data-driven integration harness for the pe loading pipeline. Expands compact `Spec` objects across loader variants and architectures, then executes PoCs as subprocesses.
+**Locations:**
+
+- PE: `tests/loaders/pe/test_runner.py`
+- COFF: `tests/loaders/coff/test_runner.py`
+
+Both runners expand compact specifications across backend variants and architectures, then execute `build{32,64}/pocs/Release/unified.exe`.
 
 ## Usage
 
 ```text
-python tests/loader/test_runner.py [--corkami] [--mutate]
+python tests/loaders/pe/test_runner.py [--corkami] [--mutate]
+python tests/loaders/coff/test_runner.py
 ```
 
 | Flag | Description |
@@ -31,10 +37,10 @@ python tests/loader/test_runner.py [--corkami] [--mutate]
 
    | Path | Contents |
    |---|---|
-   | `build64/pocs/` | x64 `loader_winapi.exe`, `loader_nowinapi.exe`, `loader_coff.exe` |
-   | `build32/pocs/` | x86 loader binaries |
-   | `build64/tests/loader/` | x64 test DLLs/EXEs |
-   | `build32/tests/loader/` | x86 test payloads |
+   | `build64/pocs/Release/unified.exe` | x64 unified PoC |
+   | `build32/pocs/Release/unified.exe` | x86 unified PoC |
+   | `build64/tests/loaders/pe/` | x64 test DLLs/EXEs |
+   | `build32/tests/loaders/pe/` | x86 test payloads |
    | `build64/tests/loaders/coff/` | x64 test BOFs |
    | `build32/tests/loaders/coff/` | x86 test BOFs |
 
@@ -44,12 +50,12 @@ python tests/loader/test_runner.py [--corkami] [--mutate]
 
 ### Spec → TestCase expansion
 
-Each `Spec` declares loader-agnostic intent:
+Each `Spec` declares backend-agnostic loader intent:
 
 | Field | Description |
 |---|---|
-| `loaders` | Which loader variants (`nowinapi`, `winapi`, `coff`) |
-| `payload` | Fixture name under `tests/loader/` or `tests/loaders/coff/` |
+| `backends` | Backend profiles such as Win32, Native API, and syscall resolver/invoker combinations |
+| `payload` | Fixture name under `tests/loaders/pe/` or `tests/loaders/coff/` |
 | `export` | Optional DLL export for FFI bridge (PE) or BOF entry point (COFF) |
 | `args` | Arguments passed to export |
 | `expect_stdout` | Substring match on process stdout |
@@ -57,7 +63,7 @@ Each `Spec` declares loader-agnostic intent:
 | `expect_rc` | Expected process exit code |
 | `expect_fail` | Loader should reject gracefully |
 
-**Core matrix:** `len(SPECS) × len(LOADERS) × len(ARCHES)` — currently includes tests for both PE loaders and COFF loaders, plus arch-mismatch tests and optional Corkami/mutation suites.
+**Core matrix:** `len(SPECS) × len(BACKENDS) × len(ARCHES)` in each runner. The PE suite also includes architecture-mismatch tests and optional Corkami/mutation suites.
 
 ### Test categories
 
@@ -78,18 +84,18 @@ End-to-end loader validation:
 
 #### 2. Architecture mismatch
 
-Feeds x86 payload to x64 loader (and vice versa); expects compatibility guard message from `snd_ldr_pe_compatibility_check`.
+Feeds an x86 payload to the x64 unified PoC (and vice versa); expects the compatibility guard message from `snd_ldr_pe_compatibility_check`.
 
 #### 3. Corkami fuzz (`--corkami`)
 
-Feeds exotic PE fixtures from `tests/fixtures/pe/corkami/` to x64 `loader_winapi`. Requires extracting `corkami_fixtures.zip` (password: `infected`).
+Feeds exotic PE fixtures from `tests/fixtures/pe/corkami/` to the runner's configured x64 PE loader. Requires extracting `corkami_fixtures.zip` (password: `infected`).
 
 #### 4. PE mutation (`--mutate`)
 
 Generates mutated PE variants at runtime; validates graceful reject or successful load. See [pe_mutator.md](pe_mutator.md).
 
 > [!NOTE]
-> Heaven's Gate is **not** covered by this runner — validate manually via `pocs/heavens_gate` on an x86 build under WoW64.
+> Heaven's Gate is **not** covered by these loader runners — validate manually with `build32/pocs/Release/unified.exe hg` from an x86 build under WoW64.
 
 ## Related documentation
 

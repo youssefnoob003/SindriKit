@@ -1,14 +1,15 @@
 #include <sindri/common/macros.h>
-#include <sindri/common/status.h>
+#include <sindri/common/memory.h>
+#include <sindri/common/string.h>
+#include <sindri/internal/windows/coff.h>
 #include <sindri/parsers/coff/parser.h>
+#include <sindri/parsers/coff/status.h>
 #include <sindri/parsers/coff/utils.h>
-#include <windows.h>
+#include <stdint.h>
 
-snd_status_t snd_coff_get_symbol_name(const snd_coff_parser_t *parser, PIMAGE_SYMBOL symbol, char *name_out,
+snd_status_t snd_coff_get_symbol_name(const snd_coff_parser_t *parser, PSND_IMAGE_SYMBOL symbol, char *name_out,
                                       SIZE_T name_len) {
-    if (!parser || !symbol || !name_out || name_len == 0) {
-        return SND_ERR(SND_STATUS_NULL_POINTER);
-    }
+    SND_CHECK_NULL(parser, symbol, name_out, name_len);
 
     snd_memzero(name_out, name_len);
 
@@ -16,69 +17,45 @@ snd_status_t snd_coff_get_symbol_name(const snd_coff_parser_t *parser, PIMAGE_SY
         DWORD offset = symbol->N.Name.Long;
 
         if (parser->string_table == NULL || offset < sizeof(DWORD) || offset >= parser->string_table_size) {
-            return SND_ERR(SND_STATUS_COFF_SYMBOL_NOT_FOUND);
+            return SND_ERR(SND_STATUS_SYMBOL_ENTRY_MISSING);
         }
 
-        char *long_name = (char *)(parser->string_table + offset);
-
+        char  *long_name = (char *)SND_PTR_ADD(parser->string_table, offset);
         SIZE_T remaining = parser->string_table_size - offset;
-        SIZE_T copy_len  = remaining < name_len - 1 ? remaining : name_len - 1;
 
-        for (SIZE_T i = 0; i < copy_len; i++) {
-            if (long_name[i] == '\0')
-                break;
-            name_out[i] = long_name[i];
-        }
+        snd_strncpy(name_out, name_len, long_name, remaining);
     } else {
-        SIZE_T copy_len = 8 < name_len - 1 ? 8 : name_len - 1;
-        for (SIZE_T i = 0; i < copy_len; i++) {
-            if (symbol->N.ShortName[i] == '\0')
-                break;
-            name_out[i] = symbol->N.ShortName[i];
-        }
+        SIZE_T short_len = snd_strnlen((const char *)symbol->N.ShortName, SND_IMAGE_SIZEOF_SHORT_NAME);
+        snd_strncpy(name_out, name_len, (const char *)symbol->N.ShortName, short_len);
     }
 
     return SND_OK;
 }
 
-snd_status_t snd_coff_get_section_name(const snd_coff_parser_t *parser, PIMAGE_SECTION_HEADER section, char *name_out,
-                                       SIZE_T name_len) {
-    if (!parser || !section || !name_out || name_len == 0) {
-        return SND_ERR(SND_STATUS_NULL_POINTER);
-    }
+snd_status_t snd_coff_get_section_name(const snd_coff_parser_t *parser, PSND_IMAGE_SECTION_HEADER section,
+                                       char *name_out, SIZE_T name_len) {
+    SND_CHECK_NULL(parser, section, name_out, name_len);
 
     snd_memzero(name_out, name_len);
 
     if (section->Name[0] == '/') {
-        DWORD offset = 0;
-        for (int i = 1; i < 8; i++) {
-            if (section->Name[i] >= '0' && section->Name[i] <= '9') {
-                offset = (offset * 10) + (section->Name[i] - '0');
-            } else {
-                break;
-            }
+        uint32_t offset = 0;
+
+        if (!snd_atou32_bounded((char *)&section->Name[1], SND_IMAGE_SIZEOF_SHORT_NAME - 1, &offset)) {
+            return SND_ERR(SND_STATUS_SECTION_HEADER_MISSING);
         }
 
         if (parser->string_table == NULL || offset < sizeof(DWORD) || offset >= parser->string_table_size) {
-            return SND_ERR(SND_STATUS_COFF_SECTION_NOT_FOUND);
+            return SND_ERR(SND_STATUS_SECTION_HEADER_MISSING);
         }
 
-        char  *long_name = (char *)(parser->string_table + offset);
+        char  *long_name = (char *)SND_PTR_ADD(parser->string_table, offset);
         SIZE_T remaining = parser->string_table_size - offset;
-        SIZE_T copy_len  = remaining < name_len - 1 ? remaining : name_len - 1;
 
-        for (SIZE_T i = 0; i < copy_len; i++) {
-            if (long_name[i] == '\0')
-                break;
-            name_out[i] = long_name[i];
-        }
+        snd_strncpy(name_out, name_len, long_name, remaining);
     } else {
-        SIZE_T copy_len = 8 < name_len - 1 ? 8 : name_len - 1;
-        for (SIZE_T i = 0; i < copy_len; i++) {
-            if (section->Name[i] == '\0')
-                break;
-            name_out[i] = section->Name[i];
-        }
+        SIZE_T short_len = snd_strnlen((const char *)section->Name, SND_IMAGE_SIZEOF_SHORT_NAME);
+        snd_strncpy(name_out, name_len, (const char *)section->Name, short_len);
     }
 
     return SND_OK;

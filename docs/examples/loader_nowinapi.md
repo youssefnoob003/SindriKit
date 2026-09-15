@@ -1,22 +1,23 @@
-# PoC: loader_nowinapi
+# Example: Native NT-backed PE loading
 
-**Location:** `pocs/loader_nowinapi/`
+**Command implementation:** `pocs/src/cmd_load_pe.c`
+**Invocation:** `unified load pe ... --nt`
 
 Evasive local reflective loading without Win32 memory/module APIs. Uses NT API resolution (`snd_mem_nt`, `snd_mod_nt`) after bootstrapping the syscall pipeline with a clean `ntdll` base.
 
 ## What it demonstrates
 
-- Syscall pipeline bootstrap (`snd_syscall_set_ntdll`, cascading resolvers)
-- Same loader chain as `loader_winapi` with different injected API tables
+- Syscall pipeline bootstrap (`snd_ntdll_set_clean`, cascading resolvers)
+- Same loader chain as the Win32 profile with different injected API tables
 - Three commented alternatives for obtaining `ntdll` (disk, PEB, KnownDlls)
 - DLL export FFI (`-e`/`-a`) identical to the Win32 PoC
 
 ## Command-line usage
 
-Same flags as `loader_winapi`:
+The command uses the same payload flags as the Win32 profile:
 
 ```text
-loader_nowinapi -f <payload_path> [-e <export_name>] [-a <arg>]...
+unified load pe -f <payload_path> [-e <export_name>] [-a <arg>]... --nt
 ```
 
 ## Walkthrough
@@ -27,17 +28,17 @@ The PoC loads `ntdll.dll` from disk into a buffer and registers it as the syscal
 
 ```c
 snd_buffer_t ntdll_buf = {0};
-status = snd_disk_buffer_load("C:\\Windows\\System32\\ntdll.dll", &ntdll_buf);
+status = snd_file_nt.load("C:\\Windows\\System32\\ntdll.dll", &ntdll_buf);
 PVOID ntdll = ntdll_buf.data;
 
-snd_syscall_set_ntdll(ntdll);
+snd_ntdll_set_clean(ntdll);
 snd_syscall_set_resolver(snd_syscall_resolve_ssn_scan);
 snd_syscall_add_resolver(snd_syscall_resolve_ssn_sort);
 snd_syscall_set_invoker(snd_syscall_indirect_invoke_asm);
 snd_syscall_set_gadget_finder(snd_syscall_find_gadget_scan);
 ```
 
-Commented alternatives in `pocs/loader_nowinapi/main.c` (swap in for different OpSec trade-offs):
+Alternative bootstrap paths are documented in the syscall pipeline; the unified command configures the selected backend in `pocs/src/cmd_load_pe.c`:
 
 ```c
 // PEB walk — no disk read (correct API):
@@ -48,7 +49,7 @@ status = snd_om_knowndll_map(&snd_map_nt, L"ntdll.dll", &ntdll);
 ```
 
 > [!NOTE]
-> The commented PEB block in source currently calls `snd_peb_get_module_base(SND_HASH_NTDLL_DLL, …)` — that is incorrect (first argument must be a wide module name, not a hash). Use `snd_peb_get_module_base_hash` as shown above.
+> Use `snd_peb_get_module_base_hash` for a hash-based PEB lookup; `snd_peb_get_module_base` accepts a wide module name.
 
 ### 2. Inject NT primitives
 
@@ -63,7 +64,7 @@ ctx.mod_api = &snd_mod_nt;   // PEB walk + manual export parsing
 ### 3. Load, prepare, execute
 
 ```c
-status = snd_disk_buffer_load(file_path, &file_buf);
+status = snd_file_nt.load(file_path, &file_buf);
 ctx.raw_source = &file_buf;
 
 status = snd_ldr_pe_prepare_image(&ctx);
@@ -93,6 +94,6 @@ Avoids `VirtualAlloc`, `LoadLibraryA`, and `GetProcAddress`. Memory and imports 
 
 ## See also
 
-- [Syscall pipeline](../domains/primitives/syscalls/pipeline.md)
+- [Syscall pipeline](../primitives/syscalls/pipeline.md)
 - [loader_winapi.md](loader_winapi.md) — Win32 baseline
 - [inject_pe.md](inject_pe.md) — full `_sys` cross-process profile

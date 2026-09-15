@@ -43,4 +43,4 @@ This pass scrambles the memory layout of internal framework structures. By chang
 ## Related documentation
 
 - [Config: CMake build system](../getting_started/README.md)
-- [Technique: Syscall Invocation](../domains/primitives/syscalls/README.md)
+- [Technique: Syscall Invocation](../primitives/syscalls/README.md)

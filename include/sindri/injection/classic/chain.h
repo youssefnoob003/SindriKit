@@ -17,7 +17,11 @@ typedef struct _snd_ldr_coff_ctx snd_ldr_coff_ctx_t;
  * Runs: open_target -> alloc_remote -> write_payload -> set_protections -> execute.
  *
  * @param ctx Initialized injection context with target_pid, payload, and proc_api set.
- * @return SND_OK on success, otherwise the failing stage status.
+ * @retval SND_OK On success.
+ * @retval SND_STATUS_NULL_POINTER If @p ctx is NULL.
+ * @retval Any error returned by `snd_inj_classic_open_target`,
+ * `snd_inj_classic_alloc_remote`, `snd_inj_classic_write_payload`,
+ * `snd_inj_classic_set_protections`, or `snd_inj_classic_execute`.
  */
 snd_status_t snd_inj_classic_shell(snd_inj_ctx_t *ctx);
 
@@ -29,7 +33,15 @@ snd_status_t snd_inj_classic_shell(snd_inj_ctx_t *ctx);
  *
  * @param ldr_ctx Initialized PE loader context with raw_source, mem_api, and mod_api set.
  * @param inj_ctx Initialized injection context with target_pid, and proc_api set.
- * @return SND_OK on success, otherwise the failing stage status.
+ * @retval SND_OK On success.
+ * @retval SND_STATUS_ARCH_MISMATCH If the payload architecture is incompatible.
+ * @retval SND_STATUS_NULL_POINTER If @p ldr_ctx, @p inj_ctx, or the loader
+ * source buffer is NULL.
+ * @retval Any error returned by `snd_pe_parse`,
+ * `snd_ldr_pe_allocate_and_copy_image`, `snd_inj_classic_open_target`,
+ * `snd_inj_classic_alloc_remote`, `snd_ldr_pe_apply_relocations`,
+ * `snd_ldr_pe_resolve_imports`, `snd_inj_classic_write_payload`,
+ * `snd_inj_classic_set_protections`, or `snd_inj_classic_execute`.
  */
 snd_status_t snd_inj_classic_pe(snd_ldr_pe_ctx_t *ldr_ctx, snd_inj_ctx_t *inj_ctx);
 
@@ -41,7 +53,15 @@ snd_status_t snd_inj_classic_pe(snd_ldr_pe_ctx_t *ldr_ctx, snd_inj_ctx_t *inj_ct
  * @param entry_point The name of the BOF entry point to execute (e.g., "go").
  * @param args The BOF arguments buffer.
  * @param arg_len The length of the BOF arguments buffer.
- * @return SND_OK on success, otherwise the failing stage status.
+ * @retval SND_OK On success.
+ * @retval SND_STATUS_ARCH_MISMATCH If the payload architecture is incompatible.
+ * @retval SND_STATUS_NULL_POINTER If @p ldr_ctx, @p inj_ctx, or the loader
+ * source buffer is NULL.
+ * @retval Any error returned by `snd_coff_parse`,
+ * `snd_ldr_coff_allocate_and_copy_sections`, `snd_inj_classic_open_target`,
+ * `snd_ldr_coff_resolve_symbols`, `snd_ldr_coff_apply_relocations`,
+ * `snd_inj_classic_write_payload`, `snd_inj_classic_set_protections`,
+ * `snd_coff_find_symbol_by_name`, or `snd_inj_classic_execute`.
  */
 snd_status_t snd_inj_classic_coff(snd_ldr_coff_ctx_t *ldr_ctx, snd_inj_ctx_t *inj_ctx, const char *entry_point,
                                   void *args, int arg_len);

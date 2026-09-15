@@ -6,6 +6,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [2.0.0] - 2026-09-14
+
+First major-version break since 1.x. Headers, CMake targets, and PoCs are not source-compatible with 1.6.0. The engine is reorganized around explicit Windows ABI layers, a facility-encoded status system, file I/O as a primitive, and a single `unified` PoC.
+
+### Breaking Changes
+- **Status headers:** `sindri/common/status.h` is gone. Include `sindri/status.h` (pulled in by `sindri.h`). Codes are facility-encoded (`SND_MAKE_STATUS`) with per-domain enums and `*_status_to_string` helpers under `include/sindri/status/`, plus domain `status.h` files for parsers, loaders, injection, primitives, and syscalls.
+- **No implicit `<windows.h>`:** Public and native sources no longer include the SDK unconditionally. SDK-backed translation units opt in with `SND_USE_WINDOWS_SDK=1`. Shared scalars live in `internal/windows/types.h`.
+- **Disk helper removed:** `common/disk.h` / `disk.c` are replaced by `snd_file_api_t` (`snd_file_win`, `snd_file_nt`, `snd_file_sys`).
+- **Syscall pipeline API:** Resolvers no longer take an NTDLL base (`snd_syscall_resolver_t` is `(DWORD hash, snd_syscall_entry_t *)`). `snd_syscall_set_ntdll` is removed; clean/active NTDLL is owned by `parsers/env/ntdll.h` (`snd_ntdll_set_clean`, lazy PEB init). Call `snd_syscall_invoke` instead of duplicating resolve-then-asm at each backend.
+- **PoC targets:** `loader_winapi`, `loader_nowinapi`, `loader_noCRT_nowinapi`, `loader_coff`, `inject_classic`, `inject_apc`, and `heavens_gate` executables are gone. `SND_BUILD_PAYLOADS` builds `unified` only (`unified load|inject|hg`). CRT-less mode uses `snd_crtless_poc_entry` and a PEB frontend, not `main`.
+- **Internal NT split:** `internal/nt/types.h` is replaced by `nt/base.h`, `nt/file.h`, `nt/process.h`, `nt/peb.h`, and `nt/api.h`.
+
+### Major Additions
+- **File primitive:** Bounded load-into-buffer via Win32, NTDLL, or syscalls (`NtCreateFile` / `NtReadFile` / `NtQueryInformationFile` hashes).
+- **NTDLL parser:** Dedicated env parser for active PEB NTDLL and an optional clean mapped image used by SSN/gadget scans.
+- **Facility status engine:** `src/status/` implements generic, CLI, and file facilities; domains own the rest. `snd_status_print` / `snd_status_to_string` dispatch by facility.
+- **Shared opcode table:** `common/opcodes.h` for syscall/gadget scanners and relocation math.
+- **Native process creation:** NT/syscall backends use `NtCreateUserProcess` and RTL process-parameter helpers; `CreateProcessW` was dropped from the hash manifest.
+
+### Architecture & Refactoring
+- **Internal header layers:** `internal/windows/` (ABI types, `PAGE_*`/`MEM_*`, PE/COFF image layouts), `internal/win32/` (callable Win32 API + CreateFile/Heap flags), `internal/nt/` (native layouts and `Nt*` typedefs). See [internal_boundaries.md](docs/architecture/internal_boundaries.md).
+- **Syscall sources:** `syscalls.c` / `*_scan.c` / `asm/invoke_*.asm` become `pipeline.c`, `resolvers/`, `finders/`, and `invokers/`.
+- **PE sections:** `section_utils` renamed to `section`.
+- **Win32 backends:** `*_win.c` (files, memory, mapping, modules, process, thread) are compiled only when `SND_CRTLESS` is off, and those TUs get `SND_USE_WINDOWS_SDK=1`.
+- **CRT-less engine:** Defines `SND_CRTLESS=1`, keeps CRT manifest, and uses `/Gs2147483647` so MSVC does not emit `__chkstk`.
+- **Documentation:** Examples, building, and architecture docs describe `unified`, the status facilities, and the Windows/Win32/NT split.
+
+### Removals
+- `include/sindri/common/status.h`, `src/common/status.c`, `include/sindri/common/disk.h`, `src/common/disk.c`
+- Per-technique PoC trees under `pocs/`
+- `snd_syscall_set_ntdll` and resolver signatures that threaded an NTDLL base
+
+---
+
 ## [1.6.0] - 2026-08-16
 
 Seventh major release. The framework introduces the Early Bird APC Injection technique, new thread-level primitives, and a consolidation of Proof-of-Concept implementations.

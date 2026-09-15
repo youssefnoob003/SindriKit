@@ -6,5 +6,6 @@
 #include <sindri/loaders.h>
 #include <sindri/parsers.h>
 #include <sindri/primitives.h>
+#include <sindri/status.h>
 
 #endif // SINDRI_H

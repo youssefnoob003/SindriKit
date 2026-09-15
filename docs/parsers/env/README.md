@@ -27,11 +27,11 @@ NT layouts (`SND_PEB`, `SND_LDR_DATA_TABLE_ENTRY`, …) live in `include/sindri/
 
 ## Table of Contents
 
-- [techniques.md](techniques.md) — PEB layout, module list walking, hash lookup
-- [api_reference.md](api_reference.md) — full public env API
+- [internals.md](internals.md) — PEB layout, module list walking, hash lookup
+- [api_reference.md](../../api_reference.md) — full public env API
 
 ## Related documentation
 
 - [Parsers domain](../README.md)
 - [PE parser](../pe/README.md) — EAT parsing used with env resolvers
-- [Internal NT layouts](../../common/api_reference.md#internal-nt-layouts-includesindriinternalnt)
+- [Internal NT layouts](../../api_reference.md#internal-nt-layouts-includesindriinternalnt)

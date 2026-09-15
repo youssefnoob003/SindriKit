@@ -1,8 +1,10 @@
-#ifndef SINDRI_INTERNAL_NT_H
-#define SINDRI_INTERNAL_NT_H
+#ifndef SND_INTERNAL_NT_H
+#define SND_INTERNAL_NT_H
 
 #include <sindri/internal/nt/api.h>
+#include <sindri/internal/nt/base.h>
+#include <sindri/internal/nt/file.h>
 #include <sindri/internal/nt/peb.h>
-#include <sindri/internal/nt/types.h>
+#include <sindri/internal/nt/process.h>
 
-#endif // SINDRI_INTERNAL_NT_H
+#endif // SND_INTERNAL_NT_H

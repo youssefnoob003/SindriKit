@@ -7,7 +7,7 @@ Onboarding guides for building SindriKit and wiring dependency-injection primiti
 ```bash
 cmake -B build -DSND_BUILD_PAYLOADS=ON
 cmake --build build --config Release
-build/pocs/loader_winapi/Release/loader_winapi.exe -f payload.dll -e DllRegisterServer
+build/pocs/Release/unified.exe load pe -f payload.dll -e DllRegisterServer --win
 ```
 
 For CRT-less production builds: `SND_CRTLESS=ON` and `SND_ENABLE_DEBUG=OFF` — see [building.md](building.md).

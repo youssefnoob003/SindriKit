@@ -51,7 +51,7 @@ When implementing a new SindriKit domain that requires runtime API resolution:
 
 1. Add a new `[module::<dll_name>]` section for the target DLL.
 2. List every API the domain implementation calls beneath it.
-3. Rebuild. One `cmake --build` regenerates the entire header automatically.
+3. Reconfigure the build directory. CMake regenerates the entire header during configuration, before compilation.
 
 ```ini
 # -- user32.dll ---------------------------------------------------------------
