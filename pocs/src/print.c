@@ -35,6 +35,8 @@ void usage_opt(const char *shorthand, const char *longhand, const char *desc) {
 void usage_note(const char *note) {
     (void)note;
 }
+void usage_backend_flags(void) {}
+void usage_syscall_flags(void) {}
 
 #else
 
@@ -90,6 +92,21 @@ void usage_opt(const char *shorthand, const char *longhand, const char *desc) {
 
 void usage_note(const char *note) {
     fprintf(stderr, "\nNotes:\n  %s\n", note);
+}
+
+void usage_backend_flags(void) {
+    usage_opt("", "--win", "Win32 API backend.");
+    usage_opt("", "--nt", "Native API (ntdll exports) backend.");
+    usage_opt("", "--sys", "Direct syscalls (KnownDlls clean ntdll + SSN).");
+}
+
+void usage_syscall_flags(void) {
+    usage_opt("", "--invoke-direct", "Syscall invoker: direct assembly.");
+    usage_opt("", "--invoke-indirect", "Syscall invoker: indirect assembly.");
+    usage_opt("", "--invoke-spoofed", "Syscall invoker: spoofed / stack-duplicated assembly.");
+    usage_opt("", "--resolve-scan", "SSN resolver: in-memory scan.");
+    usage_opt("", "--resolve-sort", "SSN resolver: export-table sort.");
+    usage_opt("", "--sys-cache", "Memoize resolved syscall entries (bypassed when spoofed).");
 }
 
 #endif

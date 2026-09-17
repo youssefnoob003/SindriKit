@@ -61,4 +61,4 @@ ctx.mem_api = &snd_mem_sys;
 ctx.mod_api = &snd_mod_nt;
 ```
 
-Import fixup (`snd_pe_resolve_imports`) requires a fully populated module API with working `load_library` and `get_proc_address` (or hash equivalents).
+Import fixup (`snd_ldr_pe_resolve_imports`) requires a fully populated module API with working `load_library` and `get_proc_address` (or hash equivalents).

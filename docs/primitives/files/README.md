@@ -38,8 +38,8 @@ if (SND_SUCCEEDED(status)) {
 
 ## Table of Contents
 
-- [README.md](README.md) — backend comparison, path constraints, usage
-- [API reference](../../api_reference.md#file-primitives-sindriprimitivesfilesh) — `snd_file_api_t`, `snd_file_load_cb`, and backend declarations
+- [internals.md](internals.md) — per-backend mechanics, buffer ownership, path prefixing
+- [API reference](../../api_reference.md#files) — `snd_file_api_t`, `snd_file_load_cb`, and backend declarations
 
 ## Related documentation
 

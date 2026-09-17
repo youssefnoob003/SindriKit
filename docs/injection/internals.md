@@ -42,7 +42,7 @@ flowchart TB
     PROC --> AENG
 ```
 
-Future techniques will add their own engine headers (e.g. `injection/apc/engine.h`) but continue to mutate the same `snd_inj_ctx_t`. Technique-specific metadata, if ever needed, lives in technique-local structures passed alongside the shared context — not in a forked injection context type.
+Future techniques will add their own engine headers (e.g. `injection/hijack/engine.h`) but continue to mutate the same `snd_inj_ctx_t`. Technique-specific metadata, if ever needed, lives in technique-local structures passed alongside the shared context — not in a forked injection context type.
 
 ---
 
@@ -51,11 +51,11 @@ Future techniques will add their own engine headers (e.g. `injection/apc/engine.
 | Stage | Set by | Meaning |
 |---|---|---|
 | `SND_INJ_STAGE_UNINITIALIZED` | — | Context created, not started |
-| `SND_INJ_STAGE_TARGET_ACQUIRED` | `snd_inj_classic_open_target` | Handle to target process |
-| `SND_INJ_STAGE_MEMORY_ALLOCATED` | `snd_inj_classic_alloc_remote` | RW region reserved in remote process |
-| `SND_INJ_STAGE_PAYLOAD_WRITTEN` | `snd_inj_classic_write_payload` | Payload bytes copied remotely |
-| `SND_INJ_STAGE_PROTECTIONS_SET` | `snd_inj_classic_set_protections` | Remote region transitioned to RX |
-| `SND_INJ_STAGE_EXECUTED` | `snd_inj_classic_execute` / `snd_inj_apc_execute` | Remote thread created / Thread resumed |
+| `SND_INJ_STAGE_TARGET_ACQUIRED` | `snd_inj_classic_open_target` / `snd_inj_apc_create_target` | Handle to target process / suspended process created |
+| `SND_INJ_STAGE_MEMORY_ALLOCATED` | `snd_inj_classic_alloc_remote` / `snd_inj_apc_alloc_remote` | RW region reserved in remote process |
+| `SND_INJ_STAGE_PAYLOAD_WRITTEN` | `snd_inj_classic_write_payload` / `snd_inj_apc_write_payload` | Payload bytes copied remotely |
+| `SND_INJ_STAGE_PROTECTIONS_SET` | `snd_inj_classic_set_protections` / `snd_inj_apc_set_protections` | Remote region transitioned to RX |
+| `SND_INJ_STAGE_EXECUTED` | `snd_inj_classic_execute` / `snd_inj_apc_execute` | Remote thread created / APC queued and thread resumed |
 
 Each engine function validates the current stage and returns `SND_STATUS_INVALID_STAGE` on mismatch. This ordering is enforced for all classic and APC paths and will be reused by future techniques that build on the same remote write/execute primitives.
 
@@ -106,7 +106,7 @@ The PE chain deliberately interleaves loader and injection stages so relocations
 | Step | Component | Action |
 |---|---|---|
 | 1 | Loader | `snd_pe_parse(ldr_ctx->raw_source, FALSE, &ldr_ctx->pe)` → `SND_STAGE_PARSED` |
-| 2 | Loader | `snd_ldr_pe_compatibility_check` |
+| 2 | Loader | Inline `SND_IS_ARCH_COMPATIBLE` guard in `snd_ldr_pe_prepare_image` (`SND_STATUS_ARCH_MISMATCH` on mismatch) |
 | 3 | Loader | `snd_ldr_pe_allocate_and_copy_image` — local RW mapping |
 | 4 | Injection | `inj_ctx->payload` <- local mapped buffer (`local_base`, `allocated_size`) |
 | 5 | Injection | `snd_inj_classic_open_target` |
@@ -200,7 +200,7 @@ snd_inj_cleanup(&inj_ctx);
 
 ## APC Technique: Early Bird (`snd_inj_apc_*`)
 
-The APC technique queue an APC to an alertable thread. Currently implemented via the "Early Bird" pattern: creating a suspended process, queuing an APC to its main thread, and resuming the thread.
+The APC technique queues an APC to an alertable thread. It is implemented via the "Early Bird" pattern: create a suspended process, queue an APC to its initial thread, then resume the thread so the APC fires.
 
 ### Pipeline
 

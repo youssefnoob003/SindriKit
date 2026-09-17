@@ -2,7 +2,7 @@
 
 Complex operations are decomposed into **ordered stages** tracked in a persistent context structure. Engine functions validate the current stage before advancing; chain functions run the full sequence in one call.
 
-This pattern applies toolkit-wide: reflective loading, classic injection, and future domains (APC injection, evasion modules) must follow the same rules.
+This pattern applies toolkit-wide: reflective loading, loading COFF, classic injection, and APC injection all follow the same rules (as must future domains such as evasion modules).
 
 ---
 
@@ -21,7 +21,7 @@ Every major domain context contains:
 
 | | Loaders | Injection |
 |---|---|---|
-| Context | **Per technique** — `snd_ldr_pe_ctx_t` for reflective PE today | **Shared** — `snd_inj_ctx_t` for all classic (and future) techniques |
+| Context | **Per technique** — `snd_ldr_pe_ctx_t`, `snd_ldr_coff_ctx_t` | **Shared** — `snd_inj_ctx_t` for classic and APC techniques |
 | Rationale | Different loader techniques may need incompatible fields | Remote open/write/execute primitives are technique-agnostic |
 
 Future loader techniques add new context types (e.g. `snd_ldr_xyz_ctx_t`). Future injection techniques reuse `snd_inj_ctx_t` and add technique-specific engine headers.
@@ -172,7 +172,7 @@ Allocation failure during section copy rolls the loader back (frees partial allo
 
 ## Debug stage tracing
 
-When `SND_ENABLE_DEBUG=ON`, chain and engine code emit transitions via `SND_DEBUG_PRINT`. Stage name strings in loader code use `SND_FALLBACK_STR("…")` so literal stage labels are stripped in SILENT builds.
+When `SND_ENABLE_DEBUG=ON`, chain and engine code emit transitions via `SND_DEBUG_PRINT`. Stage name strings are compiled out in SILENT builds — `snd_ldr_pe_stage_to_string` (and the injection/COFF equivalents) is `#if SND_DEBUG`-gated and returns `""` otherwise. Parser code uses `SND_FALLBACK_STR("…")` for the same reason.
 
 ---
 

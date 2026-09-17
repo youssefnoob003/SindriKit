@@ -14,7 +14,8 @@ SindriKit is designed **strictly for Windows targets** (`_WIN32` or `_WIN64`). T
 
 1. Clone the repository.
 2. Ensure you have **Visual Studio** (with C++ build tools), **CMake**, and a **Python 3** interpreter installed and available in your `PATH`.
-3. Use the provided `build.bat` wrapper script at the repository root to configure and compile the project.
+3. Install the Python test dependencies (needed by the PE mutation engine): `pip install -r requirements-dev.txt`.
+4. Use the provided `build.bat` wrapper script at the repository root to configure and compile the project.
 
 ### Using `build.bat`
 
@@ -36,8 +37,8 @@ build.bat debug console
 build.bat djb2
 build.bat fnv1a
 
-:: Build everything, including tests and PoC payloads (forces debug & console)
-build.bat tests pocs
+:: Build everything, including test fixtures, unit tests and PoC payloads (forces debug & console)
+build.bat tests
 ```
 
 ## Core Architectural Rules
@@ -47,7 +48,7 @@ I heavily scrutinize all pull requests against the following architectural const
 ### 1. The Dependency Injection (DI) Contract
 Never hardcode Win32 or Native API calls inside the core logic of an offensive domain (e.g., inside the reflective loader or PE parser). 
 - **Always** consume functions through injected API tables (e.g., `snd_memory_api_t`, `snd_module_api_t`).
-- If you are building a new domain, your context structure (e.g., `snd_injection_ctx_t`) must accept these API tables so the operator can swap execution mechanics at runtime.
+- If you are building a new domain, your context structure (e.g., `snd_inj_ctx_t`) must accept these API tables so the operator can swap execution mechanics at runtime.
 
 ### 2. The Status System (`snd_status_t`)
 Never return raw integers, `NULL` pointers, or standard `NTSTATUS`/`DWORD` error codes from a framework function.
@@ -86,30 +87,40 @@ SindriKit utilizes custom MASM for FFI (`ffi_x64.asm`, `ffi_x86.asm`), cascading
 
 SindriKit is a broad framework encompassing multiple offensive domains. While tests are **not strictly required** for every contribution, if you are adding a highly complex technique or a new parser, it is strongly encouraged to include a dedicated `tests` directory.
 
-If your contribution requires rigorous validation, you can look to the existing PE loader's testing methodology (`tests/loader/`) as a structural example of how to build robust tests:
+If your contribution requires rigorous validation, you can look to the existing loader testing methodology (`tests/loaders/`) as a structural example of how to build robust tests:
 
-- **Declarative Execution Matrices**: Defining test specifications that automatically expand across architectures (`x86`/`x64`) and execution mechanics (e.g., testing both `winapi` and `nowinapi` profiles).
+- **Declarative Execution Matrices**: Defining test specifications that automatically expand across architectures (`x86`/`x64`) and execution mechanics (e.g., testing the `--win`, `--nt`, and `--sys` profiles).
 - **Dynamic Fuzzing & Mutation**: Programmatically altering inputs (as seen in `pe_mutator.py`) to simulate edge cases and ensure your implementation handles structural corruption without crashing.
 - **External Corpuses & Architecture Guards**: Integrating external test suites (like Corkami) and explicitly guarding against execution mismatches.
 
 While not all domains (e.g., simple memory primitives, injection techniques, or syscall strategies) require this level of stress testing, ensuring stability is a core tenet of the framework.
 
-To execute the existing framework tests, you must first build the required binaries, then run the Python test harness:
+To execute the existing framework tests, you must first build the required binaries, then run the unit tests and the Python test harness:
 
-1. **Build the Binaries**: The test suite requires the loader executables (source in `pocs/`) and the test payloads (source in `tests/loader/src/`). Passing the `tests` flag to the build script automatically compiles both the test payloads and the required PoC loaders.
+1. **Build the Binaries**: The test suite requires the loader executables (source in `pocs/`), the test payloads (source under `tests/loaders/*/src/`), and the host-side unit tests. The `tests` flag compiles all three.
    ```cmd
    build.bat tests
    ```
-2. **Run the Matrix**: Execute the Python test runner to launch the testing matrix.
+2. **Run the Unit Tests**: Execute the ctest target for both architectures.
    ```cmd
-   python tests/loader/test_runner.py --mutate --corkami
+   ctest --test-dir build64 -C Release --output-on-failure
+   ctest --test-dir build32 -C Release --output-on-failure
    ```
+3. **Run the Integration Matrix**: Execute the Python test runner(s).
+   ```cmd
+   python tests/loaders/pe/test_runner.py --mutate --corkami
+   python tests/loaders/coff/test_runner.py
+   ```
+
+Injection and evasion are not yet covered by automated tests; validate those paths manually with the `unified` CLI (see [docs/examples/](docs/examples/README.md)).
+
+For parser hardening, build with `SND_ENABLE_ASAN=ON` and run the mutation matrix with the engine instrumented (see [docs/tests/README.md](docs/tests/README.md)). CI also runs an advisory ASan job.
 
 ## Pull Request Process
 
 1. Fork the repo and create a feature branch.
 2. Implement your feature, adhering to the architecture.
-3. If adding a new capability, update the corresponding markdown documentation in `docs/`.
-4. Run `build.bat tests pocs` to ensure both x86 and x64 builds complete successfully and all tests pass.
+3. If adding a new capability, update the corresponding markdown documentation in `docs/` and run `python scripts/audit_docs.py` (CI enforces a clean audit).
+4. Run `build.bat tests` followed by `ctest` to ensure both x86 and x64 builds complete successfully and all tests pass.
 5. **Squash your commits** into logical, atomic units before submitting.
 6. Submit a PR outlining the objective, the approach, and validating its OpSec profile.

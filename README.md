@@ -26,11 +26,26 @@ By shifting execution mechanics to runtime function pointers, you can swap your 
 
 ## Design Architecture
 
-* **Decoupled Execution Profiles:** Swap underlying memory, module, and thread manipulation behaviors via function pointer tables without breaking the calling technique.
-* **Cascading Syscall Fallbacks:** Pluggable SSN resolvers (`snd_syscall_resolve_ssn_scan`, `snd_syscall_resolve_ssn_sort`) with a priority chain — swap or extend strategies without touching domain code.
+* **Decoupled Execution Profiles:** Swap memory, module, mapping, process, thread, and file mechanics through independent function-pointer tables (`snd_memory_api_t`, `snd_module_api_t`, `snd_process_api_t`, `snd_thread_api_t`, `snd_mapping_api_t`, `snd_file_api_t`) without touching technique logic.
+* **Technique Coverage:** Reflective **PE** (EXE/DLL) and **COFF/BOF** loading, **classic** and **early-bird APC** injection over shellcode/PE/COFF, plus architecture-aware FFI and Heaven's Gate — all over the same composable profiles.
+* **Cascading Syscall Pipeline:** Pluggable SSN resolvers (`snd_syscall_resolve_ssn_scan`, `snd_syscall_resolve_ssn_sort`) with a priority chain, decoupled from invokers: **direct**, **indirect** (NTDLL gadget), or **spoofed** (dynamic Fat-Frame call-stack spoofing).
+* **Facility-Encoded Status:** Every fallible call returns `snd_status_t` — a packed facility/local code plus the captured OS error, with context strings that compile out in the silent tier.
 * **Compile-Time Obfuscation:** String and API hashing algorithms (DJB2, FNV1A) can be swapped globally via CMake. Compiling automatically randomizes the global seed to alter static signatures.
 * **Mutation Engine:** Enables deep polymorphism via `SND_MORPH`. Generates unique binary signatures on every build by injecting volatile opaque predicates into C code, functionally equivalent math/NOPs into Assembly stubs, and scrambling the memory layout of core structs.
-* **Release Builds:** A silent tier strips all diagnostic strings, file descriptors, and tracking frames from the final binary, reducing your static footprint to bare primitives.
+* **Release Builds:** A silent tier strips all diagnostic strings, file descriptors, and tracking frames; `SND_CRTLESS` builds go further with `/NODEFAULTLIB`, no SDK header, a PEB frontend, and native backends only.
+
+---
+
+## Quick Start
+
+The repository ships a single `unified` CLI that exercises every profile:
+
+```sh
+build.bat pocs
+build64\pocs\Release\unified.exe load pe -f payload.dll -e Run --sys
+```
+
+`unified` supports `load pe|coff`, `inject classic|apc` (shell, PE, COFF), and `hg`, each over `--win`/`--nt`/`--sys`. See [Examples & PoCs](docs/examples/README.md) and [Getting Started](docs/getting_started/README.md).
 
 ---
 
@@ -56,7 +71,7 @@ target_link_libraries(my_tool PRIVATE sindri::engine)
 cmake -B build && cmake --build build --config Release
 ```
 
-Just two lines for your tool to inherit all of SindriKit's capabilities: PE parsing, syscall resolution, reflective loading...
+Just two lines for your tool to inherit all of SindriKit's capabilities: PE and COFF parsing, reflective loading, cascading syscalls, and injection profiles.
 
 ---
 
@@ -70,10 +85,12 @@ Just two lines for your tool to inherit all of SindriKit's capabilities: PE pars
         │    Loader · Injector · Spoofer · Patcher · Bypasser · Harvester · ...      │
         ├────────────────────────────────────────────────────────────────────────────┤
         │                     SINDRIKIT API ABSTRACTION LAYER                        │
-        │      snd_memory_api_t  ->  alloc · free · protect                          │
-        │      snd_module_api_t  ->  load_library · get_proc_address · ...           │
-        │      snd_process_api_t ->  open · alloc_remote · write · protect · thread  │
-        │      [ future tables ] ->  thread · object · ...                           │
+        │      snd_memory_api_t   ->  alloc · free · protect                         │
+        │      snd_module_api_t   ->  load_library · get_proc_address · ...          │
+        │      snd_process_api_t  ->  open · alloc_remote · write · protect · thread │
+        │      snd_mapping_api_t  ->  open · view · close   (KnownDlls bootstrap)    │
+        │      snd_thread_api_t   ->  queue_apc · resume · suspend                   │
+        │      snd_file_api_t     ->  load                                           │
         ├──────────────────┬──────────────────────┬──────────────────────────────────┤
         │   Win32 Profile  │    Native Profile    │    Bring Your Own Mechanic       │
         │  VirtualAlloc    │  NtAllocateVirtual   │  Driver · ROP · Exotic           │
@@ -113,9 +130,12 @@ snd_syscall_set_invoker(snd_syscall_direct_invoke_asm);
 // or for indirect syscalls:
 // snd_syscall_set_invoker(snd_syscall_indirect_invoke_asm);
 // snd_syscall_set_gadget_finder(snd_syscall_find_gadget_scan);
+// or for spoofed syscalls:
+// snd_syscall_set_invoker(snd_syscall_spoofed_invoke_asm);
+// snd_syscall_set_spoof_finder(snd_syscall_find_spoof_scan);
 ```
 
-The invoker is decoupled from SSN resolution — switch between direct and indirect syscalls without modifying domain code. Indirect invocation jumps to a legitimate NTDLL gadget, keeping the syscall return address within `ntdll.dll`.
+The invoker is decoupled from SSN resolution — switch between direct, indirect, and spoofed syscalls without modifying domain code. Indirect invocation jumps to a legitimate NTDLL gadget so the return address stays inside `ntdll.dll`; spoofed invocation additionally plants a genuine caller return address inside a dynamically discovered "Fat Frame", so call-stack unwinds stay coherent.
 
 ### Compile-Time Algorithm Agility
 
@@ -141,6 +161,10 @@ Tested against:
 - 100+ dynamic PE mutations generated by the `pe_mutator` module: zeroed section names, integer overflows, invalid `e_lfanew` bounds, mangled imports.
 - Full Corkami corpus: cleanly loads valid samples, cleanly rejects malformed ones without crashing across 99% of the samples.
 
+### COFF / BOF Loader
+
+A second loader technique handles unlinked COFF object files (Beacon Object Files): bounded parsing of headers, sections, symbols, and relocations; `MODULE$Function` external symbol resolution through the injected `mod_api`; x64 `JMP [RIP+0]` trampolines for out-of-range calls; and execution of a named entry point (default `go`) — locally or marshaled into a remote process.
+
 ### State-Tracked Domain Contexts
 
 Every offensive operation is managed through a discrete context structure with stage enumeration. Operations can be paused between stages for sleep obfuscation or staged deployment, resumed cleanly, and inspected for the exact failure point down to the subsystem and reason.
@@ -161,9 +185,12 @@ snd_syscall_set_invoker(snd_syscall_direct_invoke_asm);
 // or for indirect syscalls:
 // snd_syscall_set_invoker(snd_syscall_indirect_invoke_asm);
 // snd_syscall_set_gadget_finder(snd_syscall_find_gadget_scan);
+// or for spoofed syscalls:
+// snd_syscall_set_invoker(snd_syscall_spoofed_invoke_asm);
+// snd_syscall_set_spoof_finder(snd_syscall_find_spoof_scan);
 ```
 
-The invoker is decoupled from SSN resolution — switch between direct and indirect syscalls without modifying domain code. Indirect invocation jumps to a legitimate NTDLL gadget, keeping the syscall return address within `ntdll.dll`.
+The invoker is decoupled from SSN resolution — switch between direct, indirect, and spoofed syscalls without modifying domain code. Indirect invocation jumps to a legitimate NTDLL gadget so the return address stays inside `ntdll.dll`; spoofed invocation additionally plants a genuine caller return address inside a dynamically discovered "Fat Frame", so call-stack unwinds stay coherent.
 
 Swap execution profile with one assignment:
 
@@ -185,7 +212,7 @@ For local development. `snd_status_t` expands to include `file`, `line`, and a 1
 
 ### Silent Tier — `SND_ENABLE_DEBUG=OFF`
 
-The standard deployment configuration for operational binaries. Every diagnostic string, file reference, and line number compiles away completely. `snd_status_t` collapses to two integers. Nothing else.
+The standard deployment configuration for operational binaries. Every diagnostic string, file reference, and line number compiles away completely. `snd_status_t` collapses to two integers. Nothing else. A `SND_CRTLESS=ON` build layers on `/NODEFAULTLIB`, no Windows SDK header, a PEB command-line frontend, and native backends only.
 
 ```cmake
 set(SND_ENABLE_DEBUG   OFF   CACHE BOOL   "")
@@ -203,17 +230,18 @@ target_link_libraries(my_tool PRIVATE sindri::engine)
 
 Full reference under [`docs/`](docs/README.md):
 
-- **[Getting Started](docs/getting_started/)** — CMake, build tiers, DI bootstrap, first loader/injection workflow
-- **[Architecture](docs/architecture/)** — Dependency injection, state machines, status system
-- **[Primitives](docs/domains/primitives/)** — Memory, modules, process, mapping, syscalls, execution (FFI)
-- **[Loaders](docs/domains/loaders/)** — Reflective PE pipeline
-- **[Injection](docs/domains/injection/)** — Classic shellcode and PE injection
-- **[Parsers](docs/parsers/)** — PE and env (PEB) subdomains
-- **[Common](docs/common/)** — CRT-free helpers, buffers, hashing, status
-- **[Examples & PoCs](docs/examples/)** — `unified` executable profiles (load, inject, hg)
-- **[Tests](docs/tests/)** — Integration runner, PE mutator
+- **[API Reference](docs/api_reference.md)** — the complete public C API (functions, types, DI tables, status codes)
+- **[Getting Started](docs/getting_started/README.md)** — build tiers, CMake integration, syscall bootstrap, first loader/injection workflow
+- **[Architecture](docs/architecture/README.md)** — dependency injection, state machines, facility-encoded status system
+- **[Primitives](docs/primitives/README.md)** — memory, modules, process, mapping, files, thread, syscalls, execution (FFI, Heaven's Gate)
+- **[Loaders](docs/loaders/README.md)** — reflective PE and COFF/BOF loading
+- **[Injection](docs/injection/README.md)** — classic and early-bird APC injection (shellcode, PE, COFF)
+- **[Parsers](docs/parsers/README.md)** — PE, COFF, and env (PEB/NTDLL) parsing
+- **[Common](docs/common/README.md)** — CRT-free helpers, buffers, hashing, status
+- **[Examples & PoCs](docs/examples/README.md)** — the `unified` CLI (`load pe|coff`, `inject classic|apc`, `hg`)
+- **[Tests](docs/tests/README.md)** — integration runners and the PE mutator
 
-*Planned: **[Evasion](docs/domains/evasion/)** domain.*
+*Planned: an **Evasion** domain.*
 
 ---
 

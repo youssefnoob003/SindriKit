@@ -9,7 +9,7 @@ In-memory Common Object File Format (COFF) parsing. Public headers under `includ
 | `parser.h` | `snd_coff_parse`, `snd_coff_parser_t` |
 | `utils.h` | Pointer translation, section/symbol name resolution |
 | `symbols.h` | Symbol retrieval by index and name |
-| `relocations.h` | Base relocation retrieval for sections |
+| `relocations.h` | Section relocation retrieval (including extended counts) |
 
 ## Source map
 

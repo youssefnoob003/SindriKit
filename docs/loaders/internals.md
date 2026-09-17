@@ -57,7 +57,7 @@ When `snd_ldr_coff_resolve_symbols` encounters an external symbol:
 | `SND_COFF_STAGE_SECTIONS_MAPPED` | same | Sections copied, metadata zeroed |
 | `SND_COFF_STAGE_SYMBOLS_RESOLVED` | `snd_ldr_coff_resolve_symbols` | Externals resolved |
 | `SND_COFF_STAGE_RELOCATED` | `snd_ldr_coff_apply_relocations` | Section relocations applied |
-| `SND_COFF_STAGE_READY_FOR_EXECUTION` | (n/a for COFF currently) | Same as RELOCATED |
+| `SND_COFF_STAGE_READY_FOR_EXECUTION` | `snd_ldr_coff_apply_memory_protections` | Final section protections applied |
 | `SND_COFF_STAGE_EXECUTED` | `snd_ldr_coff_execute_image` | Entry point invoked |
 
 ---
@@ -88,7 +88,7 @@ Every memory and import operation calls `ctx->mem_api` / `ctx->mod_api` — neve
 | `local_base` | Locally allocated image mapping (RW during fixups) |
 | `execution_base` | Base used for relocation delta (defaults to `local_base`; set to remote base for injection bake) |
 | `delta_offset` | `execution_base - ImageBase` |
-| `entry_point` | Resolved entry (after `snd_ldr_pe_get_entry_point`) |
+| `entry_point` | Resolved entry (`snd_pe_get_entry_point` during protections) |
 | `allocated_size` | `SizeOfImage` |
 
 When `local_base != execution_base`, the image was prepared for a **remote** address (Classic PE injection). Local execute/detach paths refuse to run.
@@ -120,7 +120,7 @@ Engine functions validate stage ordering and return `SND_STATUS_INVALID_STAGE` o
 
 ### 2. Architecture check
 
-`snd_ldr_pe_compatibility_check` — rejects cross-bitness payloads before allocation.
+An inline `SND_IS_ARCH_COMPATIBLE(ctx->pe.is_64bit)` guard in `snd_ldr_pe_prepare_image` rejects cross-bitness payloads before allocation with `SND_STATUS_ARCH_MISMATCH`.
 
 ### 3. Allocate and copy (`SND_STAGE_MEM_ALLOCATED` → `SND_STAGE_SECTIONS_MAPPED`)
 
@@ -132,11 +132,11 @@ Engine functions validate stage ordering and return `SND_STATUS_INVALID_STAGE` o
 
 ### 4. Apply relocations (`SND_STAGE_RELOCATED`)
 
-`snd_ldr_pe_apply_relocations` sets `delta_offset = execution_base - ImageBase` and calls `snd_pe_apply_relocations`. No-op when delta is zero.
+`snd_ldr_pe_apply_relocations` sets `delta_offset = execution_base - ImageBase`, then walks blocks with the parser getters `snd_pe_get_reloc_block` / `snd_pe_get_reloc_entry` and patches in place. No-op when delta is zero.
 
 ### 5. Resolve imports (`SND_STAGE_IMPORTS_RESOLVED`)
 
-`snd_ldr_pe_resolve_imports` → `snd_pe_resolve_imports(local_base, mod_api, &pe)`. Requires mapped parser context.
+`snd_ldr_pe_resolve_imports` walks descriptors with the parser getters (`snd_pe_get_import_*`) and patches the IAT directly through `ctx->mod_api->load_library` / `get_proc_address`. Requires mapped parser context.
 
 ### 6. Apply protections (`SND_STAGE_READY_FOR_EXECUTION`)
 
@@ -146,7 +146,7 @@ Engine functions validate stage ordering and return `SND_STATUS_INVALID_STAGE` o
 
 `snd_ldr_pe_execute_image`:
 
-1. `snd_ldr_pe_get_entry_point`
+1. `snd_pe_get_entry_point`
 2. `snd_ldr_pe_execute_tls_callbacks(DLL_PROCESS_ATTACH)`
 3. **DLL:** call `DllMain(hinst, DLL_PROCESS_ATTACH, NULL)` — failure returns `SND_STATUS_DLL_INITIALIZATION_FAILED`
 4. **EXE:** jump to entry point (does not return)
@@ -217,21 +217,7 @@ See [injection techniques](../injection/internals.md).
 
 ## KnownDlls (bootstrapping, not a loader)
 
-Retrieving clean `ntdll.dll` from `\KnownDlls` for syscall bootstrap is documented under [mapping primitives](../primitives/mapping/internals.md). It is a **primitive** concern, not a loader technique.
-
-Typical sequence before `snd_mem_sys` / `snd_proc_sys`:
-
-```c
-PVOID clean_ntdll = NULL;
-snd_om_knowndll_map(&snd_map_nt, L"ntdll.dll", &clean_ntdll);
-snd_ntdll_set_clean(clean_ntdll);
-snd_syscall_set_resolver(snd_syscall_resolve_ssn_scan);
-snd_syscall_add_resolver(snd_syscall_resolve_ssn_sort);
-snd_syscall_set_invoker(snd_syscall_direct_invoke_asm);
-// or for indirect syscalls:
-// snd_syscall_set_invoker(snd_syscall_indirect_invoke_asm);
-// snd_syscall_set_gadget_finder(snd_syscall_find_gadget_scan);
-```
+Retrieving a clean `ntdll.dll` from `\KnownDlls` for syscall bootstrap is a **primitive** concern, not a loader technique — see [mapping primitives](../primitives/mapping/internals.md) and the [syscall pipeline](../primitives/syscalls/pipeline.md). Bootstrap that pipeline before selecting any `_sys` backend.
 
 ---
 

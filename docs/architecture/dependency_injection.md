@@ -59,6 +59,9 @@ There is **no** `snd_mod_sys`. Import resolution during reflective load uses PEB
 
 | Callback | Role |
 |---|---|
+| `create_process_params` | Build native process-creation parameters (APC chain) |
+| `free_process_params` | Release `create_process_params` buffers |
+| `create_process` | Spawn a suspended process (used by the APC chain) |
 | `open_process` | Acquire target process handle |
 | `alloc_remote` | Remote virtual allocation |
 | `write_remote` | Cross-process write |
@@ -151,7 +154,7 @@ Uses `\KnownDlls\` on x64 and `\KnownDlls32\` on x86 (`SND_TARGET_KNOWNDLLS_DIR`
 
 ## Parser integration
 
-**Import fixup** (`snd_pe_resolve_imports`) uses the injected **`mod_api`** callbacks — `load_library`, `get_proc_address`, and hash variants — not standalone parser resolvers.
+**Import fixup** (`snd_ldr_pe_resolve_imports`) uses the injected **`mod_api`** callbacks — `load_library`, `get_proc_address`, and hash variants — not standalone parser resolvers. `parsers/pe/imports.c` only walks the import descriptors/name/thunk entries.
 
 **Export forwarders** (`snd_pe_get_export_address*`) accept a single wide-name resolver:
 

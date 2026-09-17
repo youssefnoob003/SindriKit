@@ -4,7 +4,7 @@ Remote process injection: open target, allocate remote memory, write payload, se
 
 ## Shared context vs loader contexts
 
-Unlike loaders, **all injection techniques share** `snd_inj_ctx_t` (`sindri/injection/context.h`). Stage machine, handles, remote fields, and `proc_api` are identical across classic and future techniques.
+Unlike loaders, **all injection techniques share** `snd_inj_ctx_t` (`sindri/injection/context.h`). Stage machine, handles, remote fields, and `proc_api` are identical across classic and APC techniques.
 
 Each technique adds engine functions and chains under a subdirectory but mutates the same context:
 

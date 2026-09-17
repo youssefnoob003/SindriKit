@@ -3,7 +3,7 @@ set(UNIFIED_SOURCES
     src/print.c
     src/cli.c
     src/runtime.c
-    src/syscall_cfg.c
+    src/backend.c
     src/cmd_load_pe.c
     src/cmd_load_coff.c
     src/cmd_inject_classic.c

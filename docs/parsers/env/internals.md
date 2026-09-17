@@ -1,6 +1,6 @@
 # Env Parser: Techniques
 
-The env subdomain provides runtime introspection of Windows process environment structures without calling Win32 APIs. Today this means PEB access and module list walking; the subdomain is the designated home for future TEB and process-parameter helpers.
+The env subdomain provides runtime introspection of Windows process environment structures without calling Win32 APIs. Today this means PEB access, module list walking, process-parameter/command-line retrieval, the WoW64 TEB probe, and the active/clean NTDLL registration used by the syscall pipeline.
 
 ---
 
@@ -28,7 +28,7 @@ The PEB is a user-mode structure describing process-wide state. SindriKit's simp
 |---|---|
 | `BeingDebugged` | Anti-debug checks (future env helpers) |
 | `Ldr` | Pointer to loader data (`SND_PEB_LDR_DATA`) |
-| `ProcessParameters` | Command line, image path, environment (future helpers) |
+| `ProcessParameters` | Command line and image path via `snd_env_get_process_params` / `snd_env_get_command_line`; environment block still planned |
 
 ### Accessing the Local PEB
 
@@ -118,11 +118,13 @@ This is why module resolution docs reference `parsers/env/peb.h` rather than a r
 
 ---
 
-## Future: TEB and Process Parameters
+## Process Parameters and the WoW64 Probe
 
-The env subdomain will expand to cover:
+Already available beyond module walking:
 
-- **TEB** — thread-local storage, stack limits, thread ID (via segment register reads analogous to PEB)
-- **Process parameters** — command line, image path, current directory, environment block via `PEB->ProcessParameters`
+- **Process parameters** — `snd_env_get_process_params` returns the `SND_RTL_USER_PROCESS_PARAMETERS` block; `snd_env_get_command_line` extracts the command-line `SND_UNICODE_STRING` (both accept `NULL` for the local PEB). The CRT-less PoC frontend uses the latter to build `argv`.
+- **WoW64 probe** — `snd_env_get_wow32_reserved()` reads `fs:[0xC0]` (returns `NULL` on 64-bit hosts) and backs `snd_is_wow64`.
 
-These will follow the same pattern: NT layouts in `internal/nt/`, public accessors in `parsers/env/`.
+## Future: TEB
+
+The env subdomain will expand to cover additional TEB state — thread-local storage, stack limits, thread ID — following the same pattern: NT layouts in `internal/nt/`, public accessors in `parsers/env/`. The environment block inside `ProcessParameters` is likewise still planned.

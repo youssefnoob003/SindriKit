@@ -10,7 +10,6 @@
 #include <sindri/primitives/syscalls.h>
 #include <sindri_hashes.h>
 
-
 static snd_status_t WINAPI sys_create_process_params(const void *win32_path_unicode, const wchar_t *cmd_line,
                                                      PVOID *out_params) {
     const SND_UNICODE_STRING *win32_path = (const SND_UNICODE_STRING *)win32_path_unicode;

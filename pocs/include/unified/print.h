@@ -10,5 +10,7 @@ void usage_header(const char *prog, const char *cmd, const char *sub, const char
 void usage_mode(const char *name, const char *desc);
 void usage_opt(const char *shorthand, const char *longhand, const char *desc);
 void usage_note(const char *note);
+void usage_backend_flags(void);
+void usage_syscall_flags(void);
 
 #endif

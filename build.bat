@@ -6,6 +6,7 @@ set BUILD_TIER=SILENT
 set BUILD_OUTPUT=DEBUGGER
 set HASH_ALGO=DJB2
 set BUILD_TESTS=OFF
+set BUILD_UNIT=OFF
 set BUILD_POCS=OFF
 set BUILD_CRTLESS=OFF
 set CLEAN_BUILD=OFF
@@ -28,10 +29,11 @@ if /I "%~1"=="debug" (
     set HASH_ALGO=DJB2
 ) else if /I "%~1"=="tests" (
     :: Tests automatically enable DEBUG, PRINTF, and POCS
-    set CMAKE_FLAGS=%CMAKE_FLAGS% -DSND_ENABLE_DEBUG=ON -DSND_USE_PRINTF=ON -DSND_BUILD_TESTS=ON -DSND_BUILD_PAYLOADS=ON
+    set CMAKE_FLAGS=%CMAKE_FLAGS% -DSND_ENABLE_DEBUG=ON -DSND_USE_PRINTF=ON -DSND_BUILD_TESTS=ON -DSND_BUILD_UNIT_TESTS=ON -DSND_BUILD_PAYLOADS=ON
     set BUILD_TIER=DEBUG
     set BUILD_OUTPUT=CONSOLE
     set BUILD_TESTS=ON
+    set BUILD_UNIT=ON
     set BUILD_POCS=ON
 ) else if /I "%~1"=="pocs" (
     set CMAKE_FLAGS=%CMAKE_FLAGS% -DSND_BUILD_PAYLOADS=ON
@@ -59,7 +61,7 @@ if /I "%~1"=="debug" (
     echo    console    Use printf output    ^(default: OutputDebugString^)
     echo    djb2       Use DJB2 hashing     ^(default^)
     echo    fnv1a      Use FNV1A hashing
-    echo    tests      Build test fixtures  ^(implies debug and console^)
+    echo    tests      Build test fixtures and unit tests  ^(implies debug and console^)
     echo    pocs       Build PoC binaries
     echo    crtless    Build CRT-less
     echo    clean      Delete build dirs before compiling
@@ -79,6 +81,7 @@ echo [*]   Tier    : %BUILD_TIER%
 echo [*]   Output  : %BUILD_OUTPUT%
 echo [*]   Hash    : %HASH_ALGO%
 echo [*]   Tests   : %BUILD_TESTS%
+echo [*]   Unit    : %BUILD_UNIT%
 echo [*]   PoCs    : %BUILD_POCS%
 echo [*]   CRTless : %BUILD_CRTLESS%
 echo [*]   Random  : %RANDOMIZE%

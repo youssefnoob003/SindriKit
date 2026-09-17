@@ -150,6 +150,22 @@ Each `_sys` API function calls `snd_syscall_invoke` with the appropriate hash an
 
 ---
 
+## Resolved-entry cache
+
+`_sys` primitives resolve an SSN on every call by default. For workloads that hit the same syscall repeatedly, `snd_syscall_cache_enable(TRUE)` memoizes successful resolutions by function hash so later `snd_syscall_invoke` calls skip the resolvers and finders:
+
+```c
+snd_syscall_cache_enable(TRUE);   // opt-in
+```
+
+- Disabled by default; cleared by `snd_syscall_cache_enable(FALSE)`, by `snd_syscall_set_resolver`, and by re-enabling.
+- **Bypassed automatically when a spoof finder is configured** — spoofed invocation rotates its gadget/frame per call by design.
+- Capacity is 256 entries.
+- Debug builds (`SND_ENABLE_DEBUG=ON`) log enable/disable, hits, and stores via `SND_DEBUG_PRINT`.
+- Call it again after `snd_ntdll_set_clean` registers a different NTDLL image.
+
+---
+
 ## See also
 
 - [Resolver engines](engines.md) — scan vs sort internals

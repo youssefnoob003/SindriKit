@@ -15,9 +15,9 @@ SDK-backed source files opt in with:
 SND_USE_WINDOWS_SDK=1
 ```
 
-The CMake target applies this definition only to files that directly use Win32 APIs:
+`CMakeLists.txt` sets this definition on exactly the six Win32 backend translation units (and the normal PoC target):
 
-| Source group | Examples |
+| Source group | File |
 |---|---|
 | File loading | `src/primitives/files/win.c` |
 | Win32 memory | `src/primitives/memory/win.c` |
@@ -25,8 +25,8 @@ The CMake target applies this definition only to files that directly use Win32 A
 | Win32 modules | `src/primitives/modules/win.c` |
 | Win32 process | `src/primitives/process/win.c` |
 | Win32 thread | `src/primitives/thread/win.c` |
-| Execution / Syscalls | `src/primitives/execution/syscalls/finders/spoof.c` |
-| Object Manager | `src/primitives/object_manager/knowndlls.c` |
+
+The native/syscall sources (`*_nt.c`, `*_sys.c`, `primitives/execution/syscalls/**`, `object_manager/knowndlls.c`, parsers) are compiled without the SDK definition and stay on the project-owned declarations.
 
 The normal unified PoC opts into SDK mode because it includes `<windows.h>` and exposes the Win32 backend to command-line users. When `SND_CRTLESS=ON`, CMake keeps the shared command sources, uses the PEB-based frontend, and switches the runtime helpers, file capability, and backend defaults to SDK-free implementations. `pocs/src/frontend_crtless.c` obtains arguments from the PEB and enters the same command dispatcher through a direct entrypoint.
 

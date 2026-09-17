@@ -96,13 +96,13 @@ The PE parser's `snd_pe_rva_to_ptr` and syscall neighbor scan use these checks b
 
 ### Polymorphic free
 
-`snd_buffer_free` dispatches through `free_routine`:
+`snd_buffer_free` dispatches through the buffer's `free_routine`, supplied by whichever producer filled it. File backends install the allocator-matched callback (declared in `sindri/primitives/memory.h`):
 
 | Callback | Backend |
 |---|---|
-| `snd_buffer_free_heap` | `HeapFree` |
-| `snd_buffer_free_virtual` | `VirtualFree` |
-| `snd_buffer_free_mapped` | `UnmapViewOfFile` |
+| `snd_buffer_free_win` | `HeapFree` |
+| `snd_buffer_free_nt` | `NtFreeVirtualMemory` |
+| `snd_buffer_free_sys` | direct syscall `NtFreeVirtualMemory` |
 
 ---
 

@@ -102,7 +102,7 @@ From `pocs/src/cmd_hg.c` (invoked as `unified hg`):
 #endif
 ```
 
-Build the PoC with an **x86** toolchain target (`cmake -A Win32`). See [examples/heavens_gate.md](../../examples/heavens_gate.md).
+Build the PoC with `build.bat pocs` (both architectures; use `build32/` for the x86 binary), or target x86 directly with `cmake -A Win32`. See [examples/heavens_gate.md](../../examples/heavens_gate.md).
 
 ---
 

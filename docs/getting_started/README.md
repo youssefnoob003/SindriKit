@@ -4,13 +4,20 @@ Onboarding guides for building SindriKit and wiring dependency-injection primiti
 
 ## Quick start
 
+```bat
+build.bat pocs
+build64\pocs\Release\unified.exe load pe -f payload.dll -e DllRegisterServer --win
+```
+
+Equivalent raw CMake (single architecture):
+
 ```bash
-cmake -B build -DSND_BUILD_PAYLOADS=ON
+cmake -B build -A x64 -DSND_BUILD_PAYLOADS=ON
 cmake --build build --config Release
 build/pocs/Release/unified.exe load pe -f payload.dll -e DllRegisterServer --win
 ```
 
-For CRT-less production builds: `SND_CRTLESS=ON` and `SND_ENABLE_DEBUG=OFF` — see [building.md](building.md).
+For CRT-less production builds use `build.bat pocs crtless` (or `SND_CRTLESS=ON`, `SND_ENABLE_DEBUG=OFF`) — see [building.md](building.md).
 
 ## Table of Contents
 

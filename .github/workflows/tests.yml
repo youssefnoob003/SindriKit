@@ -1,0 +1,74 @@
+name: Tests
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  docs:
+    name: Documentation audit
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Verify links, anchors, fences and identifiers
+      run: python scripts/audit_docs.py
+
+  integration:
+    name: Unit + integration (dual-arch)
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install test dependencies
+      # pe_mutator.py needs pefile; without it --mutate is silently skipped.
+      run: python -m pip install -r requirements-dev.txt
+
+    - name: Configure and build (tests + unit tests + PoCs, debug)
+      # build.bat configures and compiles build32/ and build64/ in Release.
+      # 'tests' enables SND_BUILD_TESTS + SND_BUILD_UNIT_TESTS + payloads with debug output.
+      run: cmd /c build.bat tests
+
+    - name: Unit tests (x64)
+      run: ctest --test-dir build64 -C Release --output-on-failure
+
+    - name: Unit tests (x86)
+      run: ctest --test-dir build32 -C Release --output-on-failure
+
+    - name: PE loader integration matrix (+ mutation)
+      run: python tests/loaders/pe/test_runner.py --mutate
+
+    - name: COFF loader integration matrix
+      run: python tests/loaders/coff/test_runner.py
+
+  asan:
+    name: AddressSanitizer loader matrix (advisory)
+    # Advisory until validated on the CI image. SND_ENABLE_ASAN instruments only
+    # the engine (and unified); test payloads stay uninstrumented because they
+    # are reflectively loaded rather than started by the OS loader.
+    continue-on-error: true
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Install test dependencies
+      run: python -m pip install -r requirements-dev.txt
+
+    - name: Configure and build (x64, ASan)
+      run: >
+        cmake -B build64 -A x64 -DCMAKE_BUILD_TYPE=Release
+        -DSND_ENABLE_ASAN=ON -DSND_BUILD_TESTS=ON -DSND_BUILD_PAYLOADS=ON
+        -DSND_ENABLE_DEBUG=ON -DSND_USE_PRINTF=ON
+    - run: cmake --build build64 --config Release
+
+    - name: PE parser mutation matrix under ASan
+      run: python tests/loaders/pe/test_runner.py --mutate

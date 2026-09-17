@@ -2,9 +2,16 @@
 
 The SindriKit Mutation Engine is a pre-build pipeline that introduces structural and instruction-level polymorphism into the compiled binary. When enabled, it dynamically alters the C source code, assembly stubs, and internal data structures before they are compiled, generating a unique binary signature for every build without altering the semantic behavior of the framework.
 
-To enable the mutator, pass the `SND_MORPH` flag to CMake:
+To enable the mutator, add the `morph` keyword to `build.bat`:
+
+```bat
+build.bat morph
+```
+
+Equivalent raw CMake:
+
 ```bash
-cmake -B build64 -A x64 -DSND_MORPH=ON
+cmake -B build -A x64 -DSND_MORPH=ON
 ```
 
 ## How it works

@@ -26,6 +26,12 @@ python tests/loaders/coff/test_runner.py
 
 1. **Dual-arch builds** with debug output enabled (tests match stdout substrings):
 
+   ```bat
+   build.bat tests
+   ```
+
+   Equivalent raw CMake:
+
    ```bash
    cmake -B build64 -A x64 -DSND_BUILD_TESTS=ON -DSND_BUILD_PAYLOADS=ON -DSND_ENABLE_DEBUG=ON -DSND_USE_PRINTF=ON
    cmake --build build64 --config Release
@@ -84,7 +90,7 @@ End-to-end loader validation:
 
 #### 2. Architecture mismatch
 
-Feeds an x86 payload to the x64 unified PoC (and vice versa); expects the compatibility guard message from `snd_ldr_pe_compatibility_check`.
+Feeds an x86 payload to the x64 unified PoC (and vice versa); expects the `SND_STATUS_ARCH_MISMATCH` message `"Architecture incompatible with target payload"`, emitted by the inline `SND_IS_ARCH_COMPATIBLE` guard in `snd_ldr_pe_prepare_image`.
 
 #### 3. Corkami fuzz (`--corkami`)
 

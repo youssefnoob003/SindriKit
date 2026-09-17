@@ -31,10 +31,11 @@ extern const snd_file_api_t snd_file_win;
 
 /**
  * @brief Native API file primitive backend.
- * Uses `NtCreateFile` / `NtReadFile`. 
+ * Uses `NtCreateFile` / `NtReadFile`.
  *
  * @note **Important:** This backend requires absolute paths (e.g., `C:\path\to\file.ext`).
- * Relative paths are not supported because the native path prefix (`\??\`) requires a fully qualified absolute DOS path to resolve correctly without a root directory handle.
+ * Relative paths are not supported because the native path prefix (`\??\`) requires a fully qualified absolute DOS path
+ * to resolve correctly without a root directory handle.
  */
 extern const snd_file_api_t snd_file_nt;
 

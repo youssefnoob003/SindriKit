@@ -1,8 +1,8 @@
+#include <sindri/common/debug.h>
 #include <sindri/internal/windows/types.h>
 #include <sindri/parsers/env/ntdll.h>
 #include <sindri/primitives/status.h>
 #include <sindri/primitives/syscalls.h>
-
 
 static snd_syscall_resolver_t g_strategy_chain[SND_MAX_INTERNAL_STRATEGIES] = {SND_SYSCALL_RESOLVER_DEFAULT};
 #if SND_USE_DEFAULTS
@@ -15,27 +15,27 @@ snd_syscall_invoker_t       g_syscall_invoker       = SND_SYSCALL_INVOKER_DEFAUL
 snd_syscall_gadget_finder_t g_syscall_gadget_finder = SND_SYSCALL_GADGET_FINDER_DEFAULT;
 snd_syscall_gadget_finder_t g_syscall_spoof_finder  = SND_SYSCALL_SPOOF_FINDER_DEFAULT;
 
-void snd_syscall_set_invoker(snd_syscall_invoker_t invoker) {
-    if (!invoker) {
-        return;
-    }
+#define SND_SYSCALL_CACHE_CAP 256
 
+static BOOL                g_syscall_cache_enabled = FALSE;
+static snd_syscall_entry_t g_syscall_cache[SND_SYSCALL_CACHE_CAP];
+static DWORD               g_syscall_cache_count = 0;
+
+void snd_syscall_cache_enable(BOOL enabled) {
+    g_syscall_cache_enabled = enabled;
+    g_syscall_cache_count   = 0;
+    SND_DEBUG_PRINT("[*] Syscall entry cache %s\n", enabled ? "enabled" : "disabled");
+}
+
+void snd_syscall_set_invoker(snd_syscall_invoker_t invoker) {
     g_syscall_invoker = invoker;
 }
 
 void snd_syscall_set_gadget_finder(snd_syscall_gadget_finder_t finder) {
-    if (!finder) {
-        return;
-    }
-
     g_syscall_gadget_finder = finder;
 }
 
 void snd_syscall_set_spoof_finder(snd_syscall_gadget_finder_t finder) {
-    if (!finder) {
-        return;
-    }
-
     g_syscall_spoof_finder = finder;
 }
 
@@ -44,8 +44,9 @@ void snd_syscall_set_resolver(snd_syscall_resolver_t resolver) {
         return;
     }
 
-    g_strategy_chain[0] = resolver;
-    g_strategy_count    = 1;
+    g_strategy_chain[0]   = resolver;
+    g_strategy_count      = 1;
+    g_syscall_cache_count = 0;
 }
 
 snd_status_t snd_syscall_add_resolver(snd_syscall_resolver_t resolver) {
@@ -73,6 +74,20 @@ snd_status_t snd_syscall_resolve(DWORD func_hash, snd_syscall_entry_t *entry_out
         return SND_ERR_CTX(SND_STATUS_RESOLVER_NOT_INITIALIZED, "No syscall strategies set");
     }
 
+    // The cache is bypassed for spoofed invocation, which intentionally rotates
+    // its gadget/frame per call.
+    BOOL cacheable = g_syscall_cache_enabled && g_syscall_spoof_finder == NULL;
+
+    if (cacheable) {
+        for (DWORD i = 0; i < g_syscall_cache_count; i++) {
+            if (g_syscall_cache[i].dwHash == func_hash) {
+                *entry_out = g_syscall_cache[i];
+                SND_DEBUG_PRINT("[*] Syscall entry cache hit: 0x%08X (SSN 0x%X)\n", func_hash, entry_out->wSystemCall);
+                return SND_OK;
+            }
+        }
+    }
+
     for (int i = 0; i < g_strategy_count; i++) {
         if (!g_strategy_chain[i]) {
             continue;
@@ -89,6 +104,11 @@ snd_status_t snd_syscall_resolve(DWORD func_hash, snd_syscall_entry_t *entry_out
             if (g_syscall_spoof_finder != NULL) {
                 status = g_syscall_spoof_finder(entry_out);
             }
+            if (SND_SUCCEEDED(status) && cacheable && g_syscall_cache_count < SND_SYSCALL_CACHE_CAP) {
+                g_syscall_cache[g_syscall_cache_count++] = *entry_out;
+                SND_DEBUG_PRINT("[*] Syscall entry cache store: 0x%08X (SSN 0x%X)\n", func_hash,
+                                entry_out->wSystemCall);
+            }
             return status;
         }
     }
@@ -97,6 +117,8 @@ snd_status_t snd_syscall_resolve(DWORD func_hash, snd_syscall_entry_t *entry_out
 }
 
 snd_status_t snd_syscall_invoke(DWORD sys_hash, snd_syscall_args_t *args, NTSTATUS *out_nt_status) {
+    SND_CHECK_NULL(args, out_nt_status);
+
     if (!g_syscall_invoker) {
         return SND_ERR(SND_STATUS_SYSCALL_INVOKER_NOT_INITIALIZED);
     }

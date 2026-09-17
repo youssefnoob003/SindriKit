@@ -171,6 +171,19 @@ void snd_syscall_set_gadget_finder(snd_syscall_gadget_finder_t finder);
 void snd_syscall_set_spoof_finder(snd_syscall_gadget_finder_t finder);
 
 /**
+ * @brief Enables or disables the resolved-syscall entry cache, clearing it.
+ *
+ * When enabled, successful resolutions are memoized by function hash and reused
+ * by later snd_syscall_invoke calls. The cache is bypassed whenever a spoof
+ * finder is configured, since spoofed invocation intentionally rotates its
+ * gadget/frame per call. Disabled by default. Replacing the resolver chain also
+ * clears it; call this again after re-bootstrapping a new clean NTDLL.
+ *
+ * @param enabled TRUE to enable caching, FALSE to disable and clear.
+ */
+void snd_syscall_cache_enable(BOOL enabled);
+
+/**
  * @brief Core resolution entrypoint (evaluates the internal fallback chain
  * automatically).
  *

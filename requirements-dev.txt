@@ -1,0 +1,4 @@
+# Python tooling for tests / CI.
+# pefile is required by tests/loaders/pe/pe_mutator.py (the runner's --mutate
+# mode). Without it, mutation tests are silently skipped.
+pefile

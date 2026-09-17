@@ -1,11 +1,11 @@
 # Parsers Domain
 
-In-memory interpretation of Windows file formats and runtime environment structures. Split into **PE** and **Env** subdomains mirroring `include/sindri/parsers/`.
+In-memory interpretation of Windows file formats and runtime environment structures. Split into **PE**, **COFF**, and **Env** subdomains mirroring `include/sindri/parsers/`.
 
-Both are included by `sindri/parsers.h`.
+All three are included by `sindri/parsers.h`.
 
 > [!IMPORTANT]
-> Parsers are **read-only interpreters** except where explicitly documented (e.g. `snd_pe_apply_relocations`, `snd_pe_resolve_imports` write into a caller-owned mapped image). They do not load DLLs or allocate OS resources.
+> Parsers are **read-only interpreters**: they validate and return pointers into the caller's buffer, and never allocate, patch, or load. Mutation lives in the loader engines — `snd_ldr_pe_apply_relocations` and `snd_ldr_pe_resolve_imports` apply base relocations and patch the IAT using parser getters such as `snd_pe_get_reloc_block` and `snd_pe_get_import_name`.
 
 ## Subdomains
 
@@ -40,17 +40,17 @@ Both are included by `sindri/parsers.h`.
 ### PE
 - [pe/README.md](pe/README.md) — overview and header map
 - [pe/internals.md](pe/internals.md) — format, bounds, export/import/reloc mechanics
-- [pe/api_reference.md](../api_reference.md) — full public PE API
+- [api_reference.md](../api_reference.md) — full public PE API
 
 ### COFF
 - [coff/README.md](coff/README.md) — overview and header map
 - [coff/internals.md](coff/internals.md) — format, symbols, relocations, string table handling
-- [coff/api_reference.md](../api_reference.md) — full public COFF API
+- [api_reference.md](../api_reference.md) — full public COFF API
 
 ### Env
 - [env/README.md](env/README.md) — overview and scope
 - [env/internals.md](env/internals.md) — PEB layout, module walking
-- [env/api_reference.md](../api_reference.md) — full public env API
+- [api_reference.md](../api_reference.md) — full public env API
 
 ## Related documentation
 

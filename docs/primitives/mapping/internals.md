@@ -53,18 +53,10 @@ snd_status_t status = snd_om_knowndll_map(&snd_map_nt, L"ntdll.dll", &clean_ntdl
 if (SND_FAILED(status)) {
     return status;
 }
-
-// Feed the mapped image into the syscall pipeline
-snd_ntdll_set_clean(clean_ntdll);
-snd_syscall_set_resolver(snd_syscall_resolve_ssn_scan);
-snd_syscall_add_resolver(snd_syscall_resolve_ssn_sort);
-snd_syscall_set_invoker(snd_syscall_direct_invoke_asm);
-// or for indirect syscalls:
-// snd_syscall_set_invoker(snd_syscall_indirect_invoke_asm);
-// snd_syscall_set_gadget_finder(snd_syscall_find_gadget_scan);
+snd_ntdll_set_clean(clean_ntdll);  // then configure a resolver and invoker
 ```
 
-The helper builds the full Object Manager path (`SND_TARGET_KNOWNDLLS_DIR` + DLL name), calls `open` and `view`, then closes the section handle. The mapped view remains valid after the handle is closed.
+The helper builds the full Object Manager path (`SND_TARGET_KNOWNDLLS_DIR` + DLL name), calls `open` and `view`, then closes the section handle. The mapped view remains valid after the handle is closed. For the resolver/invoker setup that follows `snd_ntdll_set_clean`, see the [syscall pipeline](../syscalls/pipeline.md).
 
 Typical stealth profile (see `pocs/src/cmd_inject_classic.c`, `unified inject classic pe`):
 

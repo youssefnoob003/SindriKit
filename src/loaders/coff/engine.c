@@ -307,7 +307,7 @@ snd_status_t snd_ldr_coff_apply_relocations(snd_ldr_coff_ctx_t *ctx) {
             }
 
             ULONG_PTR reloc_target = (ULONG_PTR)section_dest + reloc_rva;
-            
+
             ULONG_PTR remote_reloc_target = reloc_target;
             if (ctx->target.execution_base) {
                 remote_reloc_target =
@@ -349,7 +349,8 @@ snd_status_t snd_ldr_coff_apply_relocations(snd_ldr_coff_ctx_t *ctx) {
                     *(DWORD *)reloc_target += (DWORD)SND_PTR_DELTA(remote_target_addr, ctx->target.execution_base);
                     break;
                 case SND_IMAGE_REL_I386_REL32:
-                    *(DWORD *)reloc_target += (DWORD)SND_PTR_DELTA(remote_target_addr, (remote_reloc_target + SND_REL32_DISP_SIZE));
+                    *(DWORD *)reloc_target +=
+                        (DWORD)SND_PTR_DELTA(remote_target_addr, (remote_reloc_target + SND_REL32_DISP_SIZE));
                     break;
                 default:
                     return SND_ERR(SND_STATUS_RELOCATION_UNKNOWN_TYPE);

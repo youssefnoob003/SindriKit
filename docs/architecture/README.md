@@ -13,7 +13,7 @@ Design patterns, execution models, and telemetry constraints governing SindriKit
 └───────────────────────────┬─────────────────────────────────┘
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  Domains: loaders · injection · (future) networking         │
+│  Domains: loaders · injection · (planned) evasion           │
 └───────────────────────────┬─────────────────────────────────┘
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
@@ -36,5 +36,5 @@ Design patterns, execution models, and telemetry constraints governing SindriKit
 ## Related documentation
 
 - [Getting started](../getting_started/README.md)
-- [Domains](../primitives/README.md)
+- [Primitives](../primitives/README.md)
 - [Examples](../examples/README.md)

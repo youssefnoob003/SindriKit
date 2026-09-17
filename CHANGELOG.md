@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [2.1.0] - 2026-09-17
+
+Additive release. The public API is source-compatible with 2.0.0: new build options and an opt-in syscall cache were added, and several correctness bugs were fixed.
+
+### Added
+- **Syscall entry cache:** `snd_syscall_cache_enable()` memoizes resolved entries by function hash (disabled by default; bypassed for spoofed invocation). The PoCs expose it as `--sys-cache`.
+- **Unit tests:** `tests/unit/` (`snd_unit_tests`, `SND_BUILD_UNIT_TESTS=ON`) covers status encoding, bounds/range helpers, string helpers, hashing, buffer lifecycle, parser rejection, and regressions for the guards fixed below.
+- **AddressSanitizer option:** `SND_ENABLE_ASAN=ON` instruments the engine and its consumers while leaving reflectively-loaded test payloads uninstrumented.
+- **Docs audit:** `scripts/audit_docs.py` verifies relative links, same-file anchors, balanced code fences, and that every documented `snd_*` identifier exists in the code tree.
+- **CI:** `.github/workflows/tests.yml` runs the docs audit, the unit tests, and both loader integration matrices (`--mutate`) on Windows, plus an advisory ASan job. `requirements-dev.txt` pins `pefile`.
+
+### Fixed
+- **MSVC `SND_CHECK_NULL`:** the traditional MSVC preprocessor mis-expands the variadic argument-count selection, silently dropping the guard for 3-argument calls (e.g. `snd_om_knowndll_map`). The engine now compiles with `/Zc:preprocessor`.
+- **Sort resolver:** guard the bubble sort against an empty table and bound the export-name copy, preventing an out-of-bounds table walk and a one-byte stack overflow on malformed NTDLL input.
+- **Syscall pipeline:** `snd_syscall_invoke` rejects NULL `args`/`out_nt_status`; the invoker/gadget/spoof setters accept NULL to clear, matching their documented contract.
+
+### Changed
+- **PoC architecture:** a `unified_backend_t` (`pocs/src/backend.c`) binds the file/memory/module/process/thread tables once; shared `-a` parsing and usage helpers replace per-command duplication. Removed the unused `load_clean_ntdll` helper and the `syscall_cfg` module.
+- **Build:** ARM64 configuration now fails fast (x86/x64 only); `build.bat tests` also builds and runs the unit tests; `generate_status_codes.py` adds a decimal column to `docs/status_codes.md`.
+
+### Documentation
+- Reorganized `docs/`: examples rewritten around the `unified` CLI, consistent per-domain README/`internals` pages, corrected parser/loader boundaries, and a rewritten architecture set and API reference (all links, anchors, and identifiers audited).
+- Updated the root `README`, `SECURITY`, and `CONTRIBUTING` to match current capabilities and commands.
+
+---
+
 ## [2.0.0] - 2026-09-14
 
 First major-version break since 1.x. Headers, CMake targets, and PoCs are not source-compatible with 1.6.0. The engine is reorganized around explicit Windows ABI layers, a facility-encoded status system, file I/O as a primitive, and a single `unified` PoC.

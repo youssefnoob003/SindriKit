@@ -70,7 +70,7 @@ This is the most operationally significant choice at parse time.
 Passing the wrong flag produces out-of-bounds reads (caught by bounds checks) or silent reads from wrong offsets.
 
 > [!NOTE]
-> `snd_pe_resolve_imports` and `snd_pe_apply_relocations` **require** `is_mapped = TRUE`. They operate on a virtually laid-out image, not a raw file buffer.
+> The loader-side mutation steps that consume this parser — `snd_ldr_pe_apply_relocations` and `snd_ldr_pe_resolve_imports` — **require** `is_mapped = TRUE`. They operate on a virtually laid-out image, not a raw file buffer. The parser itself only reads.
 
 ---
 
@@ -131,25 +131,31 @@ Forwarder RVAs point into the export directory and contain strings like `NTDLL.R
 
 Recursion depth is capped at `SND_FWD_MAX_DEPTH` (4). Pass `NULL` as `resolver` to fail forwarders with `SND_STATUS_EXPORT_FORWARDER_UNSUPPORTED`.
 
-Typical resolver wiring in NT primitives:
+Typical resolver wiring (from `src/primitives/modules/nt.c`): resolve the module to a mapped image, parse it, then hash-look-up its exports with a PEB-walking forwarder resolver.
 
 ```c
+snd_pe_parser_t parser;
+snd_buffer_t    buf = {.data = ntdll, .size = SND_SYS_DLL_SIZE_DEFAULT};
+snd_pe_parse(&buf, TRUE, &parser);
+
 status = snd_pe_get_export_address_hash(
-    ntdll, SND_SYS_DLL_SIZE_DEFAULT, SND_HASH_NTOPENSECTION,
-    &func_addr, snd_peb_get_module_base  /* wide-name PEB walk */
+    &parser, SND_HASH_NTOPENSECTION, &func_addr,
+    snd_peb_get_module_base  /* wide-name PEB walk for forwarders */
 );
 ```
 
 ---
 
-## Import Table Parsing
+## Import Table Walking (parser) and Fixup (loader)
 
 The import table is a null-terminated array of `IMAGE_IMPORT_DESCRIPTOR` structures. Each descriptor references:
 
 - **Import Name Table (INT)** — original thunks (`OriginalFirstThunk`, or `FirstThunk` if absent)
 - **Import Address Table (IAT)** — patched at load time (`FirstThunk`)
 
-`snd_pe_resolve_imports` walks each descriptor:
+The parser exposes the walk read-only through `snd_pe_get_import_descriptor`, `snd_pe_get_import_name`, and `snd_pe_get_import_thunk`; it never touches the IAT.
+
+The loader's `snd_ldr_pe_resolve_imports` performs the fixup:
 
 1. Read the DLL name and call `mod_api->load_library`.
 2. Iterate the thunk array. Ordinals are detected via `SND_PE_SNAP_BY_ORDINAL32`/`64` (high bit set).
@@ -166,18 +172,18 @@ All module loading and symbol resolution is delegated to the injected `mod_api`,
 
 PE images embed absolute virtual addresses assuming load at `ImageBase`. When mapped elsewhere, every pointer is wrong by `delta = actual_base - preferred_base`.
 
-The `.reloc` section contains `IMAGE_BASE_RELOCATION` blocks. Each block covers a 4KB page with 12-bit offsets and 4-bit type tags. SindriKit patches:
+The `.reloc` section contains `IMAGE_BASE_RELOCATION` blocks. Each block covers a 4KB page with 12-bit offsets and 4-bit type tags. The parser exposes them read-only via `snd_pe_get_reloc_block` and `snd_pe_get_reloc_entry`; the loader's `snd_ldr_pe_apply_relocations` computes `delta_offset = execution_base - ImageBase` and patches:
 
 - `IMAGE_REL_BASED_DIR64` — QWORD add on x64
 - `IMAGE_REL_BASED_HIGHLOW` — DWORD add on x86
 - `IMAGE_REL_BASED_ABSOLUTE` — skipped (padding)
 
-If `delta_offset == 0`, the function returns immediately with `SND_OK`.
+If `delta_offset == 0`, the loader returns immediately with `SND_OK`.
 
-If the image has no relocation directory, an empty directory, or `IMAGE_FILE_RELOCS_STRIPPED` is set while `delta != 0`, the function returns `SND_STATUS_RELOCATION_DIRECTORY_INVALID`.
+If the image has no relocation directory, the loader returns `SND_STATUS_RELOCATION_DIRECTORY_MISSING`; if `IMAGE_FILE_RELOCS_STRIPPED` is set while `delta != 0`, it returns `SND_STATUS_RELOCATION_DIRECTORY_STRIPPED`.
 
 > [!NOTE]
-> The mapped image must have at least `PAGE_READWRITE` on affected pages — the function physically overwrites pointer-sized values in `.text` and `.data`.
+> The mapped image must have at least `PAGE_READWRITE` on affected pages — the loader physically overwrites pointer-sized values in `.text` and `.data`.
 
 ---
 

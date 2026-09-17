@@ -43,19 +43,7 @@ Local operations use `(HANDLE)-1` as the process handle, matching the NT convent
 Direct syscalls bypass userland EDR hooks inside `ntdll.dll` stubs. The kernel receives memory requests without userland telemetry sensors recording the API transition.
 
 > [!WARNING]
-> `snd_mem_sys` requires the operator to bootstrap the syscall pipeline before invocation:
->
-
-> ```c
-> snd_ntdll_set_clean(clean_ntdll_base);
-> snd_syscall_set_resolver(snd_syscall_resolve_ssn_scan);
-> snd_syscall_add_resolver(snd_syscall_resolve_ssn_sort);
-> snd_syscall_set_invoker(snd_syscall_direct_invoke_asm);
-> // or for indirect syscalls:
-> // snd_syscall_set_invoker(snd_syscall_indirect_invoke_asm);
-> // snd_syscall_set_gadget_finder(snd_syscall_find_gadget_scan);
-> ```
-> If the pipeline is not configured, syscall resolution fails immediately and all `_sys` memory calls return an error.
+> `snd_mem_sys` requires a bootstrapped syscall pipeline (`snd_ntdll_set_clean` plus a resolver and invoker) before any call. See the [syscall pipeline](../syscalls/pipeline.md). Without it, every `_sys` memory call fails during SSN resolution.
 
 ## Mixing Backends
 

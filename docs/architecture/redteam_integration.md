@@ -78,13 +78,13 @@ Remote injection swaps in `snd_inj_ctx_t` + `snd_inj_classic_pe` — see [Basic 
 
 ## Include strategy
 
-| Include | When to use |
+| Include | Contents |
 |---|---|
-| `sindri.h` | Full toolkit — loaders, injection, parsers, primitives |
-| `sindri/primitives.h` | Memory/process/syscall only, no loader |
-| `sindri/loaders.h` | Reflective PE without injection |
-| `sindri/injection.h` | Injection without local loader (shellcode path) |
-| `sindri/common.h` | Status/buffer/hash only |
+| `sindri.h` | Full toolkit — common, status, parsers, primitives, loaders, injection |
+| `sindri/primitives.h` | All primitive backends (FFI, files, mapping, memory, modules, object manager, process, syscalls, thread); no loader/injection |
+| `sindri/loaders.h` | PE and COFF loader contexts and chains; no injection |
+| `sindri/injection.h` | Classic and APC injection, shared context, injection status |
+| `sindri/common.h` | Buffer, debug, hash, macros, memory, opcodes, string helpers (no status) |
 
 Granular includes reduce compile time and make dependency boundaries explicit in large codebases.
 
@@ -136,7 +136,7 @@ Example: [Dependency injection — custom backends](dependency_injection.md#cust
 | Engine with `SND_CRTLESS=ON` | `/NODEFAULTLIB`-friendly minimal surface |
 | `unified inject classic pe ... --sys` | Dual context — loader bake + remote syscall inject |
 | `unified inject classic shell ... --win` | Injection-only, Win32 process API |
-| `heavens_gate` | x86 WoW64 execution primitive (orthogonal to syscalls) |
+| `unified hg` | x86 WoW64 execution primitive (orthogonal to syscalls) |
 
 Walkthroughs: [Examples](../examples/README.md).
 
@@ -152,10 +152,16 @@ set(SND_BUILD_TESTS ON CACHE BOOL "")
 
 Documentation: [Test runner](../tests/test_runner.md).
 
-For quick validation without parent CMake, build PoCs standalone:
+For quick validation without parent CMake, build the PoCs standalone:
+
+```bat
+build.bat pocs
+```
+
+or, with raw CMake:
 
 ```bash
-cmake -B build -DSND_BUILD_PAYLOADS=ON
+cmake -B build -A x64 -DSND_BUILD_PAYLOADS=ON
 cmake --build build --config Release
 ```
 
@@ -169,7 +175,7 @@ Do not link implant-specific evasion code into SindriKit source trees. Instead:
 2. Keep SindriKit vendor copy clean for upstream merges.
 3. Respect domain independence — loaders must not call injection internals directly; use documented chain APIs.
 
-Architecture overview: [README](README.md) · [Domains](../primitives/README.md).
+Architecture overview: [README](README.md) · [Primitives](../primitives/README.md).
 
 ---
 

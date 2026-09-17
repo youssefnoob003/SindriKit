@@ -2,15 +2,14 @@
 #include <sindri/common/macros.h>
 #include <sindri/common/memory.h>
 #include <sindri/common/opcodes.h>
-#include <sindri/internal/windows/types.h>
 #include <sindri/internal/nt/base.h>
+#include <sindri/internal/windows/types.h>
 #include <sindri/parsers/env/peb.h>
 #include <sindri/parsers/pe/exports.h>
 #include <sindri/parsers/pe/parser.h>
 #include <sindri/primitives/status.h>
 #include <sindri/primitives/syscalls.h>
 #include <sindri_hashes.h>
-
 
 snd_status_t snd_syscall_find_spoof_scan(snd_syscall_entry_t *entry) {
     SND_CHECK_NULL(entry, entry->pSyscallAddr);
@@ -33,11 +32,12 @@ snd_status_t snd_syscall_find_spoof_scan(snd_syscall_entry_t *entry) {
         PSND_IMAGE_RUNTIME_FUNCTION pdata = (PSND_IMAGE_RUNTIME_FUNCTION)SND_PTR_ADD(kernel32, pdata_rva);
         DWORD                       count = pdata_sz / sizeof(*pdata);
 
-        static ULONG call_count = 0;
-        ULONG system_time = *(volatile ULONG*)SND_KUSER_SHARED_DATA_SYSTEM_TIME;
-        ULONG entropy     = (ULONG)((ULONG_PTR)kernel32 & 0xFFFFFFFF) ^ (ULONG)((ULONG_PTR)entry & 0xFFFFFFFF) ^ system_time;
-        ULONG skip_count  = (entry->dwHash + ++call_count + entropy) % 15;
-        ULONG        current_matches = 0;
+        static ULONG call_count  = 0;
+        ULONG        system_time = *(volatile ULONG *)SND_KUSER_SHARED_DATA_SYSTEM_TIME;
+        ULONG        entropy =
+            (ULONG)((ULONG_PTR)kernel32 & 0xFFFFFFFF) ^ (ULONG)((ULONG_PTR)entry & 0xFFFFFFFF) ^ system_time;
+        ULONG skip_count      = (entry->dwHash + ++call_count + entropy) % 15;
+        ULONG current_matches = 0;
 
         PVOID fallback_gadget     = NULL;
         DWORD fallback_frame_size = 0;

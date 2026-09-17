@@ -17,6 +17,10 @@ static DWORD              g_syscall_count     = 0;
 static BOOL               g_table_initialized = FALSE;
 
 static void sort_syscall_table() {
+    if (g_syscall_count < 2) {
+        return;
+    }
+
     BOOL swapped;
 
     for (DWORD i = 0; i < g_syscall_count - 1; i++) {
@@ -52,7 +56,11 @@ static BOOL export_enum_callback(const char *func_name, WORD ordinal, PVOID func
         }
 
         SIZE_T name_len = snd_strnlen(func_name, SND_MAX_SYS_NAME_LEN);
-        CHAR   normalized_name[SND_MAX_SYS_NAME_LEN];
+        if (name_len >= SND_MAX_SYS_NAME_LEN) {
+            return TRUE;
+        }
+
+        CHAR normalized_name[SND_MAX_SYS_NAME_LEN];
 
         normalized_name[0] = 'N';
         normalized_name[1] = 't';

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(SindriKit VERSION 2.0.0 LANGUAGES C ASM_MASM)
+project(SindriKit VERSION 2.1.0 LANGUAGES C ASM_MASM)
 
 message(STATUS "SindriKit ${PROJECT_VERSION}")
 
@@ -7,21 +7,34 @@ if(NOT WIN32)
     message(FATAL_ERROR "SindriKit supports Windows targets only.")
 endif()
 
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(ARM64|arm64|aarch64|ARM)$" OR CMAKE_GENERATOR_PLATFORM MATCHES "ARM")
+    message(FATAL_ERROR "SindriKit supports x86 and x64 Windows targets only "
+                        "(processor='${CMAKE_SYSTEM_PROCESSOR}', platform='${CMAKE_GENERATOR_PLATFORM}').")
+endif()
+
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 option(SND_ENABLE_DEBUG   "Enable debug prints and tracking"             OFF)
 option(SND_USE_PRINTF     "Use printf instead of OutputDebugString"      OFF)
-option(SND_BUILD_PAYLOADS "Build the unified PoC (unified.exe)"          OFF)
-option(SND_BUILD_TESTS    "Build test binaries (DLLs and EXEs)"          OFF)
+option(SND_BUILD_PAYLOADS   "Build the unified PoC (unified.exe)"          OFF)
+option(SND_BUILD_TESTS      "Build test binaries (DLLs and EXEs)"          OFF)
+option(SND_BUILD_UNIT_TESTS "Build the host-side unit test binary"         OFF)
+option(SND_ENABLE_ASAN      "Instrument the engine (and consumers) with AddressSanitizer" OFF)
 option(SND_CRTLESS        "Build the framework for pure CRT-less operation" OFF)
 option(SND_RANDOMIZE_SEED "Use randomized seed for compile-time hashes"  OFF)
 option(SND_USE_DEFAULTS   "Use sensible defaults for configuration globals" OFF)
 option(SND_MORPH        "Run polymorphic mutation engine before build" OFF)
 
+if(SND_ENABLE_ASAN AND MSVC)
+    # MSVC AddressSanitizer requires the dynamic CRT.
+    message(STATUS "SindriKit: SND_ENABLE_ASAN -> MSVC runtime switched to dynamic (/MD).")
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL$<$<CONFIG:Debug>:Debug>")
+endif()
+
 # --- Configuration Guards ---
 if(SND_CRTLESS)
-    if(SND_BUILD_TESTS)
-        message(WARNING "SindriKit: SND_BUILD_TESTS requires the CRT. Forcing SND_CRTLESS=OFF.")
+    if(SND_BUILD_TESTS OR SND_BUILD_UNIT_TESTS)
+        message(WARNING "SindriKit: test builds require the CRT. Forcing SND_CRTLESS=OFF.")
         set(SND_CRTLESS OFF CACHE BOOL "Build the framework for pure CRT-less operation" FORCE)
     else()
         if(SND_ENABLE_DEBUG OR SND_USE_PRINTF)
@@ -230,6 +243,20 @@ endif()
 
 add_library(sindri::engine ALIAS sindri_engine)
 
+# AddressSanitizer is applied to the engine only (PUBLIC propagates to
+# consumers such as unified/unit tests). Test payloads are standalone DLLs/EXEs
+# that do not link the engine, so they stay clean — important because they are
+# reflectively loaded rather than started by the OS loader.
+if(SND_ENABLE_ASAN)
+    if(MSVC)
+        target_compile_options(sindri_engine PUBLIC /fsanitize=address)
+        target_link_options(sindri_engine PUBLIC /fsanitize=address)
+    else()
+        target_compile_options(sindri_engine PUBLIC -fsanitize=address)
+        target_link_options(sindri_engine PUBLIC -fsanitize=address)
+    endif()
+endif()
+
 if(NOT SND_CRTLESS)
     set(SND_WINDOWS_SDK_SOURCES
         ${SND_SRC_DIR}/primitives/files/win.c
@@ -285,6 +312,13 @@ if(SND_USE_DEFAULTS)
 endif()
 
 if(MSVC)
+    # Conforming preprocessor (PUBLIC so consumers that expand the same macros
+    # inherit it). The traditional MSVC preprocessor mis-expands the variadic
+    # argument-count selection in SND_CHECK_NULL(...), which silently drops the
+    # guard for a 3-argument call such as snd_om_knowndll_map.
+    target_compile_options(sindri_engine PUBLIC
+        $<$<COMPILE_LANGUAGE:C>:/Zc:preprocessor>
+    )
     target_compile_options(sindri_engine PRIVATE
         $<$<COMPILE_LANGUAGE:C>:/W4>
         $<$<COMPILE_LANGUAGE:C>:/WX>
@@ -316,4 +350,9 @@ endif()
 
 if(SND_BUILD_TESTS)
     add_subdirectory(${SND_TESTS_DIR} ${CMAKE_CURRENT_BINARY_DIR}/tests)
+endif()
+
+if(SND_BUILD_UNIT_TESTS)
+    enable_testing()
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tests/unit ${CMAKE_CURRENT_BINARY_DIR}/tests/unit)
 endif()

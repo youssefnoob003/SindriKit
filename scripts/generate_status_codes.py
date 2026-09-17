@@ -93,7 +93,8 @@ def generate_status_codes(facilities):
 
                 fac_display = current_facility if current_facility else 'SND_FACILITY_GENERIC'
                 hex_val = f"0x{current_val:08X}"
-                status_codes.append((hex_val, entry_name, fac_display))
+                dec_val = str(current_val)
+                status_codes.append((hex_val, dec_val, entry_name, fac_display))
 
     status_codes.sort(key=lambda x: int(x[0], 16))
     return status_codes
@@ -107,10 +108,10 @@ def main():
         f.write("> [!NOTE]\n")
         f.write("> This file is **automatically generated** at CMake configuration time by\n")
         f.write("> `scripts/generate_status_codes.py`. Do not edit it manually.\n\n")
-        f.write("| Hex Code | Status Name | Facility |\n")
-        f.write("|----------|-------------|----------|\n")
-        for hex_val, name, fac in status_codes:
-            f.write(f"| `{hex_val}` | `{name}` | `{fac}` |\n")
+        f.write("| Hex Code | Decimal | Status Name | Facility |\n")
+        f.write("|----------|---------|-------------|----------|\n")
+        for hex_val, dec_val, name, fac in status_codes:
+            f.write(f"| `{hex_val}` | `{dec_val}` | `{name}` | `{fac}` |\n")
 
 if __name__ == '__main__':
     main()

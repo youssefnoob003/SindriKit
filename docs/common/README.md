@@ -2,7 +2,7 @@
 
 Shared, domain-agnostic utilities under `include/sindri/common/`. Aggregated by `include/sindri/common.h`.
 
-These headers provide CRT independence, bounded memory access, status handling, and hash-based API resolution without plaintext strings.
+These headers provide CRT independence, bounded memory access, and hash-based API resolution without plaintext strings.
 
 ## Header map
 
@@ -14,8 +14,9 @@ These headers provide CRT independence, bounded memory access, status handling, 
 | `buffer.h` | `snd_buffer_t` lifecycle and buffer bounds checking |
 | `hash.h` | Runtime hashing (`snd_hash`, `snd_hash_lower`, `snd_hash_wide_lower`) |
 | `debug.h` | `SND_DEBUG_PRINT`, `SND_FALLBACK_STR`, `snd_dump_hex` |
-| `primitives/files.h` | `snd_file_win`, `snd_file_nt`, and `snd_file_sys` file capability tables |
 | `opcodes.h` | Shared opcode and instruction constants |
+
+File loading (`snd_file_win` / `_nt` / `_sys`) is a primitive, not common infrastructure — see [files primitives](../primitives/files/README.md).
 
 ### Related: internal Windows headers
 

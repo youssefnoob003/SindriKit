@@ -3,7 +3,7 @@
 SindriKit uses a universal **`snd_status_t`** return type instead of bare integers or NULL checks. Failures carry a framework error code and the underlying OS error (Win32 or NTSTATUS) in a single struct.
 
 **Headers:** `include/sindri/status.h`, `include/sindri/status/`
-**Implementation:** `src/status/`
+**Implementation:** `src/status/` (generic/CLI/file/core) plus per-domain resolvers such as `src/parsers/pe/status.c` and `src/loaders/pe/status.c`
 
 ---
 
@@ -82,21 +82,24 @@ if (SND_FAILED(status)) {
 
 ## Architecture overview
 
-The status architecture uses structured facility bitmask encoding to classify status codes while delegating string descriptions to dedicated 1:1 submodule resolvers.
+The status architecture uses structured facility bitmask encoding to classify status codes, then dispatches each facility to a dedicated string resolver:
 
-```
-                  +--------------------------+
-                  |    snd_status_to_string  |
-                  +------------+-------------+
-                               |
-                   +-----------+-----------+
-                   |  Facility ID Switch  |
-                   +-----------+-----------+
-                               |
-         +---------------------+---------------------+
-         |                     |                     |
-  [0x0000] Generic      [0x0003] PE Parser   [0x0005] PE Loader ...
-  generic_status.c      pe_status.c          pe_loader_status.c
+```text
+snd_status_to_string(status)
+        |
+        v
+SND_STATUS_FACILITY(status.code) --> resolver
+        |
+        +-- 0x0000 Generic / 0x0003 Context machines -> src/status/generic.c
+        +-- 0x0001 CLI                               -> src/status/cli.c
+        +-- 0x0002 File                              -> src/status/file.c
+        +-- 0x0004 PE parser                         -> src/parsers/pe/status.c
+        +-- 0x0005 COFF parser                       -> src/parsers/coff/status.c
+        +-- 0x0006 Env parser                        -> src/parsers/env/status.c
+        +-- 0x0007 PE loader                         -> src/loaders/pe/status.c
+        +-- 0x0008 COFF loader                       -> src/loaders/coff/status.c
+        +-- 0x0009 Syscall                           -> src/primitives/execution/syscalls/status.c
+        +-- 0x000A Primitives                        -> src/primitives/status.c
 ```
 
 ---
@@ -119,7 +122,7 @@ Status codes are separated by **Facility ID** (`snd_facility_id_t`) and construc
 | `0x0009` | `SND_FACILITY_SYSCALL` | Syscalls | `sindri/primitives/syscalls.h` | `SND_STATUS_SSN_NOT_FOUND`, `SND_STATUS_GADGET_NOT_FOUND`, `SND_STATUS_SPOOF_GADGET_NOT_FOUND`, `SND_STATUS_RESOLVER_NOT_INITIALIZED`, `SND_STATUS_NTDLL_NOT_INITIALIZED` |
 | `0x000A` | `SND_FACILITY_PRIMITIVES` | OS primitives | `sindri/primitives/status.h` | `SND_STATUS_ALLOC_FAILED`, `SND_STATUS_PROCESS_OPEN_FAILED`, `SND_STATUS_PROCESS_CREATE_FAILED`, `SND_STATUS_THREAD_QUEUE_FAILED`, `SND_STATUS_THREAD_RESUME_FAILED`, `SND_STATUS_SYSCALL_INVOKER_NOT_INITIALIZED` |
 
-Domain headers are aggregated into `sindri/status.h` for seamless framework inclusion. `snd_status_to_string()` extracts the facility via `SND_STATUS_FACILITY(status.code)` and dispatches lookup to domain-specific functions (`snd_pe_parser_status_to_string()`, `snd_ldr_pe_status_to_string()`, etc.). Injection currently reuses generic, primitive, and stage statuses rather than defining separate injection facilities.
+Domain status headers are pulled in by the umbrella `sindri.h` and by `src/status/status.c` for dispatch; `include/sindri/status.h` itself contains only `core.h` and `facility.h`. `snd_status_to_string()` extracts the facility via `SND_STATUS_FACILITY(status.code)` and dispatches lookup to domain-specific functions (`snd_pe_parser_status_to_string()`, `snd_ldr_pe_status_to_string()`, etc.). Injection currently reuses generic, primitive, and stage statuses rather than defining separate injection facilities.
 
 ---
 

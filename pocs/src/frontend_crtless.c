@@ -11,6 +11,9 @@ static char  poc_args[POC_MAX_ARGS][POC_ARG_SIZE];
 static char *poc_argv[POC_MAX_ARGS];
 
 static int build_argv(const wchar_t *command_line, int *argc_out, char ***argv_out) {
+    if (!command_line)
+        return -1;
+
     int            argc   = 0;
     const wchar_t *cursor = command_line;
 

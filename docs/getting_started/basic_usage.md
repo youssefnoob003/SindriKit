@@ -47,7 +47,7 @@ See [Dependency injection](../architecture/dependency_injection.md) for the full
 ```c
 PVOID ntdll = NULL;
 
-// Option A: KnownDlls (preferred for inject_pe / production syscall paths)
+// Option A: KnownDlls (preferred for inject classic / production syscall paths)
 status = snd_om_knowndll_map(&snd_map_nt, L"ntdll.dll", &ntdll);
 
 // Option B: PEB walk (no disk I/O)
@@ -212,7 +212,7 @@ if (SND_FAILED(status)) {
 }
 ```
 
-See [Status system](../architecture/status_system.md) and [Common status API](../api_reference.md#status-sindricommonstatush).
+See [Status system](../architecture/status_system.md) and [Status API](../api_reference.md#status).
 
 ---
 

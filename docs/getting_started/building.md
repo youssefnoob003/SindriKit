@@ -4,20 +4,52 @@ SindriKit builds with CMake `>= 3.16` on **Windows only** (`_WIN32` / `_WIN64`).
 
 ## First build (PoCs)
 
-```bash
-cmake -B build -DSND_BUILD_PAYLOADS=ON
-cmake --build build --config Release
+```bat
+build.bat pocs
 ```
 
-The payload option now builds one unified command-line PoC rather than separate loader and injection executables.
-
-Outputs (MSVC multi-config):
+`build.bat` configures and compiles **both** architectures in `Release`:
 
 | Target | Path |
 |---|---|
-| `unified` | `build/pocs/Release/unified.exe` |
+| x86 `unified` | `build32/pocs/Release/unified.exe` |
+| x64 `unified` | `build64/pocs/Release/unified.exe` |
+| Engine | `build32/Release/sindri_engine.lib`, `build64/Release/sindri_engine.lib` |
+
+Equivalent raw CMake (one architecture and directory per configure):
+
+```bash
+cmake -B build -A x64 -DSND_BUILD_PAYLOADS=ON
+cmake --build build --config Release
+# → build/pocs/Release/unified.exe
+```
+
+The payload option builds one unified command-line PoC rather than separate loader and injection executables.
+
+### `build.bat` keywords
+
+Keywords combine, e.g. `build.bat pocs crtless` or `build.bat tests clean`.
+
+| Keyword | Effect |
+|---|---|
+| `pocs` | Build the `unified` PoC |
+| `crtless` | `SND_CRTLESS=ON` (combine with `pocs`) |
+| `tests` | Debug + console + `SND_BUILD_TESTS=ON` (implies `pocs`) |
+| `debug` | `SND_ENABLE_DEBUG=ON` |
+| `console` | `SND_USE_PRINTF=ON` (stdout instead of `OutputDebugStringA`) |
+| `clean` | Delete `build32/` and `build64/` before compiling |
+| `djb2` / `fnv1a` | Compile-time hash algorithm |
+| `random` | Randomize the compile-time hash seed |
+| `defaults` | `SND_USE_DEFAULTS=ON` |
+| `morph` | Run the mutation engine (`SND_MORPH=ON`) |
 
 CRT-less builds compile the same `unified` command implementation with a different frontend. The CRT-less target has no CRT, console output, or Windows SDK dependency; it reads the process command line through the PEB and dispatches the shared commands through native Sindri backends:
+
+```bat
+build.bat pocs crtless
+```
+
+or with CMake:
 
 ```bash
 cmake -B build -DSND_CRTLESS=ON -DSND_ENABLE_DEBUG=OFF -DSND_BUILD_PAYLOADS=ON
@@ -61,15 +93,29 @@ Include `sindri.h` or granular headers (`sindri/primitives.h`, etc.). Hash const
 | `SND_RANDOMIZE_SEED` | `OFF` | Random `SND_HASH_SEED` per configure | OFF keeps deterministic hashes for faster rebuilds |
 | `SND_BUILD_PAYLOADS` | `OFF` | Build `pocs/` executables | Builds `unified`; CRT-less mode selects its SDK-free frontend and native backend profile |
 | `SND_BUILD_TESTS` | `OFF` | Build test payloads + integration harness inputs | **Requires CRT**; forces `SND_CRTLESS=OFF` |
+| `SND_BUILD_UNIT_TESTS` | `OFF` | Build the host-side unit test binary (`snd_unit_tests`) + ctest | **Requires CRT**; forces `SND_CRTLESS=OFF`. Run with `ctest --test-dir <build> -C Release` |
+| `SND_ENABLE_ASAN` | `OFF` | Instrument the engine (and `unified`/unit tests) with AddressSanitizer | Test payloads stay uninstrumented (they are reflectively loaded). MSVC switches to the dynamic CRT (`/MD`) |
 | `SND_MORPH` | `OFF` | Enables the mutation engine | Polymorphic C/ASM mutations + struct shuffling. See [mutator.md](../scripts/mutator.md). |
 | `SND_USE_DEFAULTS` | `OFF` | Pre-configure syscall invoker, gadget finder, and resolver globals | Defaults to indirect invoke + scan resolver + gadget scan. **OpSec note**: Left OFF by default so unused ASM stubs and scanners aren't linked into the final binary. |
 
 ### Guards (CMake)
 
-- `SND_BUILD_TESTS=ON` → `SND_CRTLESS` forced OFF
+- `SND_BUILD_TESTS=ON` / `SND_BUILD_UNIT_TESTS=ON` → `SND_CRTLESS` forced OFF
 - `SND_CRTLESS=ON` → `SND_ENABLE_DEBUG` and `SND_USE_PRINTF` forced OFF
 - `SND_USE_DEFAULTS=ON` → invoker = `snd_syscall_indirect_invoke_asm`, gadget finder = `snd_syscall_find_gadget_scan`, resolver = `snd_syscall_resolve_ssn_scan`
 - Non-Windows configure → fatal error
+- **ARM64** configure (`-A ARM64`) → fatal error; SindriKit targets x86 and x64 only
+
+CI runs the unit tests and the loader integration matrices on `windows-latest` after `build.bat tests`, and the documentation audit (`scripts/audit_docs.py`) on Linux. An advisory AddressSanitizer run of the PE mutation matrix is also provisioned.
+
+Sanitizers reuse the existing mutation matrix with the engine instrumented:
+
+```bash
+cmake -B build64 -A x64 -DSND_ENABLE_ASAN=ON -DSND_BUILD_TESTS=ON -DSND_BUILD_PAYLOADS=ON \
+      -DSND_ENABLE_DEBUG=ON -DSND_USE_PRINTF=ON
+cmake --build build64 --config Release
+python tests/loaders/pe/test_runner.py --mutate
+```
 
 Use a **clean build directory** when switching between CRT-less and test builds.
 
@@ -134,7 +180,11 @@ SILENT is required for production artifacts.
 
 ## Integration tests layout
 
-The Python test runner expects **dual-arch** MSVC output trees:
+The Python test runner expects **dual-arch** MSVC output trees. `build.bat tests` produces exactly that layout (`SND_BUILD_TESTS=ON`, `SND_ENABLE_DEBUG=ON`, `SND_USE_PRINTF=ON`, plus `pocs`):
+
+```bat
+build.bat tests
+```
 
 | Path | Contents |
 |---|---|
@@ -145,7 +195,7 @@ The Python test runner expects **dual-arch** MSVC output trees:
 | `build64/tests/loaders/coff/` | x64 COFF test payloads |
 | `build32/tests/loaders/coff/` | x86 COFF test payloads |
 
-Configure with `SND_BUILD_TESTS=ON` and `SND_ENABLE_DEBUG=ON` (tests match stdout substrings from debug output). See [test_runner.md](../tests/test_runner.md).
+See [test_runner.md](../tests/test_runner.md).
 
 ---
 
