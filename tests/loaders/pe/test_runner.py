@@ -536,6 +536,19 @@ def main():
         action="store_true",
         help="Generate and run dynamic PE mutations to stress-test the loader",
     )
+    parser.add_argument(
+        "--arch",
+        action="append",
+        choices=list(ARCHES),
+        help="Only run the given architecture (repeatable).",
+    )
+    parser.add_argument(
+        "--exclude-substr",
+        action="append",
+        default=[],
+        metavar="S",
+        help="Skip test cases whose name contains S (repeatable).",
+    )
     args = parser.parse_args()
 
     print("==================================================")
@@ -551,6 +564,11 @@ def main():
         + load_corkami_tests(enabled=args.corkami)
         + load_mutation_tests(enabled=args.mutate)
     )
+
+    if args.arch:
+        full_matrix = [t for t in full_matrix if any(f"({a})" in t.name for a in args.arch)]
+    if args.exclude_substr:
+        full_matrix = [t for t in full_matrix if not any(s in t.name for s in args.exclude_substr)]
 
     print(
         f"[*] {len(full_matrix)} test cases "

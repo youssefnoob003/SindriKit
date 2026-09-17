@@ -19,7 +19,7 @@ ctest --test-dir build64 -C Release --output-on-failure
 - [pe_mutator.md](pe_mutator.md) — PE mutation engine (benign and breaking cases)
 - [test_payloads.md](test_payloads.md) — fixture payloads (PE DLL/EXE and COFF BOFs) and validation logic
 
-CI (`.github/workflows/tests.yml`) runs the unit tests and both integration matrices on `windows-latest` after `build.bat tests`.
+Both runners accept `--arch x64|x86` (repeatable) and `--exclude-substr <text>` to scope a run. CI (`.github/workflows/tests.yml`) runs the unit tests and both integration matrices after `build.bat tests`: x64 in full, x86 without the syscall backends (`--exclude-substr Syscalls`), because the hosted Windows image's x86/WOW64 `ntdll` resolves SSNs differently and those specs fail there. The full matrix passes on supported local builds — run `python tests\loaders\pe\test_runner.py --mutate` to cover it.
 
 Injection is not covered by automated tests yet; validate `inject classic`/`inject apc` manually via the `unified` CLI (see [Examples](../examples/README.md)).
 

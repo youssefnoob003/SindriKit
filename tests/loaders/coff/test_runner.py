@@ -208,6 +208,24 @@ def run_test(tc: TestCase, known_missing: Optional[set[str]] = None) -> Optional
     return False
 
 def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="SindriKit COFF Integration Test Runner")
+    parser.add_argument(
+        "--arch",
+        action="append",
+        choices=list(ARCHES),
+        help="Only run the given architecture (repeatable).",
+    )
+    parser.add_argument(
+        "--exclude-substr",
+        action="append",
+        default=[],
+        metavar="S",
+        help="Skip test cases whose name contains S (repeatable).",
+    )
+    args = parser.parse_args()
+
     print(f"\n{Colors.BLUE}=== SindriKit COFF Integration Tests ==={Colors.RESET}\n")
 
     cases = []
@@ -215,6 +233,11 @@ def main():
         for spec in SPECS:
             for arch in ARCHES:
                 cases.append(spec.to_test_case(backend_label, backend_args, arch))
+
+    if args.arch:
+        cases = [t for t in cases if any(f"({a})" in t.name for a in args.arch)]
+    if args.exclude_substr:
+        cases = [t for t in cases if not any(s in t.name for s in args.exclude_substr)]
 
     known_missing = preflight_check()
     passed = 0

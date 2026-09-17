@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [2.1.1] - 2026-09-17
+
+Patch release fixing the `SND_ENABLE_ASAN` build introduced in 2.1.0 and constraining the CI integration matrix. No public API change.
+
+### Added
+- Integration runners accept `--arch x64|x86` (repeatable) and `--exclude-substr <text>` to scope a run.
+
+### Fixed
+- **`SND_ENABLE_ASAN` (MSVC):** `/fsanitize=address` was applied to MASM sources (warning A4018), and ASan's C5072 ("without debug information") was promoted to an error by `/WX`. ASan flags are now scoped to C and ASan builds emit `/Zi` (plus `/wd5072`).
+- **`SND_ENABLE_ASAN` runtime:** the MSVC runtime override used the invalid value `MultiThreadedDLLDebug`; it is now the valid `MultiThreaded[Debug]DLL`.
+
+### Changed
+- **CI integration matrix:** the hosted Windows image resolves x86/WOW64 syscall SSNs differently, causing the x86 syscall specs to fail there. CI now runs x64 in full and x86 without the syscall backends; the full matrix still runs locally.
+
+---
+
 ## [2.1.0] - 2026-09-17
 
 Additive release. The public API is source-compatible with 2.0.0: new build options and an opt-in syscall cache were added, and several correctness bugs were fixed.

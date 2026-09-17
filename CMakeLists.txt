@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(SindriKit VERSION 2.1.0 LANGUAGES C ASM_MASM)
+project(SindriKit VERSION 2.1.1 LANGUAGES C ASM_MASM)
 
 message(STATUS "SindriKit ${PROJECT_VERSION}")
 
@@ -28,7 +28,7 @@ option(SND_MORPH        "Run polymorphic mutation engine before build" OFF)
 if(SND_ENABLE_ASAN AND MSVC)
     # MSVC AddressSanitizer requires the dynamic CRT.
     message(STATUS "SindriKit: SND_ENABLE_ASAN -> MSVC runtime switched to dynamic (/MD).")
-    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL$<$<CONFIG:Debug>:Debug>")
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 endif()
 
 # --- Configuration Guards ---
@@ -249,10 +249,17 @@ add_library(sindri::engine ALIAS sindri_engine)
 # reflectively loaded rather than started by the OS loader.
 if(SND_ENABLE_ASAN)
     if(MSVC)
-        target_compile_options(sindri_engine PUBLIC /fsanitize=address)
+        # Scope to C only: MASM rejects /fsanitize (warning A4018). /Zi silences
+        # C5072 ("ASAN enabled without debug information"), which /WX otherwise
+        # promotes to an error.
+        target_compile_options(sindri_engine PUBLIC
+            $<$<COMPILE_LANGUAGE:C>:/fsanitize=address>
+            $<$<COMPILE_LANGUAGE:C>:/Zi>
+            $<$<COMPILE_LANGUAGE:C>:/wd5072>
+        )
         target_link_options(sindri_engine PUBLIC /fsanitize=address)
     else()
-        target_compile_options(sindri_engine PUBLIC -fsanitize=address)
+        target_compile_options(sindri_engine PUBLIC -fsanitize=address -g)
         target_link_options(sindri_engine PUBLIC -fsanitize=address)
     endif()
 endif()
