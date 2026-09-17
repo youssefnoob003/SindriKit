@@ -57,28 +57,3 @@ jobs:
 
     - name: COFF loader integration matrix (x86, non-syscall)
       run: python tests/loaders/coff/test_runner.py --arch x86 --exclude-substr Syscalls
-
-  asan:
-    name: AddressSanitizer loader matrix (advisory)
-    # Advisory until validated on the CI image. SND_ENABLE_ASAN instruments only
-    # the engine (and unified); test payloads stay uninstrumented because they
-    # are reflectively loaded rather than started by the OS loader.
-    continue-on-error: true
-    runs-on: windows-latest
-    steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
-    - name: Install test dependencies
-      run: python -m pip install -r requirements-dev.txt
-
-    - name: Configure and build (x64, ASan)
-      run: >
-        cmake -B build64 -A x64 -DCMAKE_BUILD_TYPE=Release
-        -DSND_ENABLE_ASAN=ON -DSND_BUILD_TESTS=ON -DSND_BUILD_PAYLOADS=ON
-        -DSND_ENABLE_DEBUG=ON -DSND_USE_PRINTF=ON
-    - run: cmake --build build64 --config Release
-
-    - name: PE parser mutation matrix under ASan
-      run: python tests/loaders/pe/test_runner.py --mutate --arch x64

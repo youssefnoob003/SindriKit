@@ -106,7 +106,7 @@ Include `sindri.h` or granular headers (`sindri/primitives.h`, etc.). Hash const
 - Non-Windows configure → fatal error
 - **ARM64** configure (`-A ARM64`) → fatal error; SindriKit targets x86 and x64 only
 
-CI runs the unit tests and the loader integration matrices on `windows-latest` after `build.bat tests`, and the documentation audit (`scripts/audit_docs.py`) on Linux. An advisory AddressSanitizer run of the PE mutation matrix is also provisioned.
+CI runs the unit tests and the loader integration matrices on `windows-latest` after `build.bat tests`, and the documentation audit (`scripts/audit_docs.py`) on Linux.
 
 Sanitizers reuse the existing mutation matrix with the engine instrumented:
 

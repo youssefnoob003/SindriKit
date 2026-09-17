@@ -33,7 +33,7 @@ cmake --build build64 --config Release
 python tests\loaders\pe\test_runner.py --mutate
 ```
 
-CI runs an **advisory** ASan job (`.github/workflows/tests.yml`).
+This is a **local** option; CI does not run it. An ASan-instrumented `unified.exe` needs the MSVC ASan runtime on the loader path (`clang_rt.asan_dynamic-x86_64.dll` under `VC\Tools\MSVC\<ver>\bin\Hostx64\x64\`) — copy it next to `unified.exe` or add that directory to `PATH`, or the process will fail to start with `0xC0000135`.
 
 > [!NOTE]
 > The mutation engine (`pe_mutator.py`) requires `pip install pefile` (`requirements-dev.txt`); without it the runner's `--mutate` mode is silently skipped.

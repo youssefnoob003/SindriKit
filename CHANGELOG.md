@@ -19,6 +19,7 @@ Patch release fixing the `SND_ENABLE_ASAN` build introduced in 2.1.0 and constra
 
 ### Changed
 - **CI integration matrix:** the hosted Windows image resolves x86/WOW64 syscall SSNs differently, causing the x86 syscall specs to fail there. CI now runs x64 in full and x86 without the syscall backends; the full matrix still runs locally.
+- **CI sanitizer job removed:** the advisory AddressSanitizer job could not produce valid results on the hosted runner — an ASan-instrumented `unified.exe` fails to start without the MSVC ASan runtime DLL (`0xC0000135`), so every spec failed at launch and mutation cases falsely "passed." `SND_ENABLE_ASAN` remains a documented local option.
 
 ---
 
