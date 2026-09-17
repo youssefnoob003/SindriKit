@@ -114,7 +114,7 @@ To execute the existing framework tests, you must first build the required binar
 
 Injection and evasion are not yet covered by automated tests; validate those paths manually with the `unified` CLI (see [docs/examples/](docs/examples/README.md)).
 
-For parser hardening, build with `SND_ENABLE_ASAN=ON` and run the mutation matrix with the engine instrumented (see [docs/tests/README.md](docs/tests/README.md)). CI also runs an advisory ASan job.
+For parser hardening, build with `SND_ENABLE_ASAN=ON` and run the mutation matrix with the engine instrumented (local only — see [docs/tests/README.md](docs/tests/README.md)).
 
 ## Pull Request Process
 
