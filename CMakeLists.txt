@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(SindriKit VERSION 2.1.1 LANGUAGES C ASM_MASM)
+project(SindriKit VERSION 2.2.0 LANGUAGES C ASM_MASM)
 
 message(STATUS "SindriKit ${PROJECT_VERSION}")
 
@@ -180,6 +180,8 @@ add_library(sindri_engine STATIC
     ${SND_SRC_DIR}/injection/classic/chain.c
     ${SND_SRC_DIR}/injection/apc/engine.c
     ${SND_SRC_DIR}/injection/apc/chain.c
+    ${SND_SRC_DIR}/injection/hijack/engine.c
+    ${SND_SRC_DIR}/injection/hijack/chain.c
 
     # Primitives domain
     ${SND_SRC_DIR}/primitives/status.c

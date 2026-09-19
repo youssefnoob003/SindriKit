@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [2.2.0] - 2026-09-19
+
+Eighth major release. The framework introduces Thread Hijacking injection, deep parser unit testing, robust Python runner core architecture, and a new injection engine test suite.
+
+### Major Additions
+- **Thread Hijacking Engine (`snd_inj_hijack_*`)**: A new injection technique that spawns a suspended target process, allocates memory, writes the payload, paints a fresh entry frame over the main thread's native context using `set_context`, and resumes it. Supports PE, COFF, and Shellcode payloads.
+- **Thread & Process APIs (`snd_thread_api_t`, `snd_process_api_t`)**: Expanded with `get_context` and `set_context` to safely marshal the portable `SND_THREAD_REGISTERS` structure to and from a thread's native OS context. Expanded the process API with `create_thread` for remote thread spawning.
+- **Parser Unit Tests**: Added a comprehensive suite of unit tests for the PE and COFF parsers (`test_pe_parser.c`, `test_coff_symbols.c`, etc.), complete with synthetic in-memory image builders (`pe_builder.c`, `coff_builder.c`).
+- **Python Test Runner Core & Injection Suite**: Refactored the integration test scripts to use a shared `runner_core.py` and `selftest_common.py` architecture. Added a dedicated injection engine test suite (`tests/injection/test_runner.py`).
+- **Unified PoC Integration**: Added `inject hijack` to the `unified` PoC, enabling seamless testing of the new injection technique from the command line.
+- **Internal Windows Types**: Added `sindri/internal/windows/context.h` to host strict 1:1 Windows SDK mirrors for thread contexts completely devoid of public API projections, ensuring pristine separation of concerns.
+
+### Fixed
+- **Testing Macros**: Fixed `C4033` (function must return a value) warnings in the unit test framework (`test_framework.h`, `test_coff_symbols.c`) by implementing a robust `setjmp`/`longjmp` exit path in place of implicit `return`.
+- **PE Relocations Parsing**: Fixed a bug in `snd_pe_get_reloc_block` where the absence of a `.reloc` directory incorrectly aborted the PE loader instead of gracefully skipping relocations.
+
 ## [2.1.1] - 2026-09-17
 
 Patch release fixing the `SND_ENABLE_ASAN` build introduced in 2.1.0 and constraining the CI integration matrix. No public API change.

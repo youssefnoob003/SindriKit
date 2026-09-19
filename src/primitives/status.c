@@ -66,6 +66,10 @@ const char *snd_prim_status_to_string(int code) {
         return "Thread resume failed";
     case SND_STATUS_THREAD_SUSPEND_FAILED:
         return "Thread suspend failed";
+    case SND_STATUS_THREAD_GET_CONTEXT_FAILED:
+        return "Thread context get failed";
+    case SND_STATUS_THREAD_SET_CONTEXT_FAILED:
+        return "Thread context set failed";
 
     // Syscall
     case SND_STATUS_SYSCALL_INVOKER_NOT_INITIALIZED:

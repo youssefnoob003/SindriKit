@@ -1,22 +1,25 @@
 """
-SindriKit Integration Test Runner
+SindriKit PE Loader Integration Test Runner.
 
-Data-driven test matrix that auto-expands compact specs across all
-backend x architecture combinations.  Add a new Spec to SPECS and every
-relevant (backend, arch) variant is generated automatically.
+Declarative matrix: a compact Spec expands into one TestCase per (backend, arch)
+combination and is executed through the shared runner_core plumbing. Mutation
+and Corkami cases are appended here because they are PE-specific.
 
 Usage:
-    python tests/test_runner.py [--corkami]
+    python tests/loaders/pe/test_runner.py [--corkami] [--mutate] [--strict]
 """
 
 import argparse
 import os
-import subprocess
 import sys
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
-# Add this block:
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from runner_core import (BuildTree, Colors, REJECT_MARKER, TestCase, filter_cases, preflight, run_case,  # noqa: E402
+                         summarize, vt100_enable)
+
 try:
     import pe_mutator
 except ImportError:
@@ -32,13 +35,15 @@ TEST32_DIR = r"build32\tests\loaders\pe"
 CORKAMI_DIR = r"tests\fixtures\pe\corkami"
 CORKAMI_ZIP = r"tests\fixtures\pe\corkami_fixtures.zip"
 
-# Compact lookups used by the matrix generator.
 _BIN = {64: BIN64_DIR, 32: BIN32_DIR}
 _TEST = {64: TEST64_DIR, 32: TEST32_DIR}
 _BITS = {"x64": 64, "x86": 32}
 _PTR_WIDTH = {"x64": 16, "x86": 8}  # MSVC %p hex-digit count
 
 ARCHES = ("x64", "x86")
+
+TREES = (BuildTree("x64", BIN64_DIR, TEST64_DIR), BuildTree("x86", BIN32_DIR, TEST32_DIR))
+
 BACKENDS = (
     ("win", "Win32", ()),
     ("nt", "Native API", ("--nt",)),
@@ -49,48 +54,22 @@ BACKENDS = (
 )
 
 
-class Colors:
-    GREEN = "\033[92m"
-    RED = "\033[91m"
-    YELLOW = "\033[93m"
-    BLUE = "\033[94m"
-    RESET = "\033[0m"
-
-
-# ── Test Case (fully resolved, runnable) ────────────────────────────────────
-
-
-@dataclass
-class TestCase:
-    """A concrete, runnable test."""
-
-    name: str
-    cmd: List[str]
-    expect_stdout: Optional[str] = None
-    expect_returncode: Optional[int] = None
-    expect_fail: bool = False
-    corkami_fuzz: bool = False
-
-
 # ── Spec (compact, auto-expanding) ──────────────────────────────────────────
 
 
 @dataclass
 class Spec:
-    """Architecture- and backend-independent test specification.
-
-    Expands into one TestCase per (backend, arch) combination.
-    """
+    """Architecture- and backend-independent test specification."""
 
     backends: Tuple[str, ...]
     payload: str  # e.g. "test_dll", "test_exe_advanced"
     export: Optional[str] = None
     args: List[str] = field(default_factory=list)
-    expect_stdout: Optional[str] = None  # static expected text
+    expect_output: Optional[str] = None  # static expected text
     expect_retval: Optional[int] = None  # expected FFI return (arch-formatted)
     expect_rc: Optional[int] = None  # expected process exit code
     expect_fail: bool = False
-    label: str = ""  # human-readable test label
+    label: str = ""
 
     def _ext(self) -> str:
         return ".dll" if "dll" in self.payload else ".exe"
@@ -99,13 +78,10 @@ class Spec:
         w = _PTR_WIDTH[arch]
         return f"Export returned: 0x{self.expect_retval:0{w}X}"
 
-    def to_test_case(self, backend_name: str, backend_label: str, backend_args: Tuple[str, ...], arch: str) -> TestCase:
+    def to_test_case(self, backend_label: str, backend_args: Tuple[str, ...], arch: str) -> TestCase:
         bits = _BITS[arch]
         loader_exe = os.path.abspath(os.path.join(_BIN[bits], "Release", "unified.exe"))
-        payload_file = os.path.join(
-            _TEST[bits], "Release", f"{self.payload}_{arch}{self._ext()}"
-        )
-        payload_file = os.path.abspath(payload_file)
+        payload_file = os.path.abspath(os.path.join(_TEST[bits], "Release", f"{self.payload}_{arch}{self._ext()}"))
 
         cmd = [loader_exe, "load", "pe", "-f", payload_file] + list(backend_args)
         if self.export:
@@ -113,118 +89,52 @@ class Spec:
         for a in self.args:
             cmd += ["-a", a]
 
-        expect = self.expect_stdout
+        expect = self.expect_output
         if self.expect_retval is not None:
             expect = self._format_retval(arch)
 
         return TestCase(
             name=f"{backend_label} ({arch}) -> {self.label}",
             cmd=cmd,
-            expect_stdout=expect,
+            expect_output=expect,
             expect_returncode=self.expect_rc,
             expect_fail=self.expect_fail,
         )
 
 
-# ── Declarative Test Specs ──────────────────────────────────────────────────
-# Each Spec generates   len(backends) x len(ARCHES)   concrete TestCases.
-
 SPECS = [
-    # ── DLL: correct args ───────────────────────────────────────────────────
-    Spec(
-        tuple(name for name, _, _ in BACKENDS),
-        "test_dll",
-        "SayHello",
-        ["bonjour", "hello", "12"],
-        expect_retval=0xFEEDC0DE,
-        label="Load DLL with exact args",
-    ),
-    # ── DLL: bad args ───────────────────────────────────────────────────────
-    Spec(
-        tuple(name for name, _, _ in BACKENDS),
-        "test_dll",
-        "SayHello",
-        ["wrong", "args"],
-        expect_retval=0xDEADBEEF,
-        label="Edge Case: Bad Args Validation",
-    ),
-    # ── DLL: missing -e parameter ───────────────────────────────────────────
-    Spec(
-        tuple(name for name, _, _ in BACKENDS),
-        "test_dll",
-        expect_stdout="Export name is required for DLL payloads",
-        expect_fail=True,
-        label="Edge Case: Missing Export Parameter",
-    ),
-    # ── DLL: advanced (imports, allocs) ─────────────────────────────────────
-    Spec(
-        tuple(name for name, _, _ in BACKENDS),
-        "test_dll_advanced",
-        "AdvancedExport",
-        ["advanced_test"],
-        expect_retval=0x1337C0DE,
-        label="Load Advanced DLL (Imports, Allocs)",
-    ),
-    # ── DLL: empty (missing export directory) ───────────────────────────────
-    Spec(
-        tuple(name for name, _, _ in BACKENDS),
-        "test_dll_empty",
-        "NonExistentExport",
-        expect_stdout="Requested PE data directory entry is missing",
-        expect_fail=True,
-        label="Load Empty DLL (Missing Dirs)",
-    ),
-    # ── DLL: verify DllMain ran + relocations applied ───────────────────────
-    Spec(
-        tuple(name for name, _, _ in BACKENDS),
-        "test_dll",
-        "VerifyInit",
-        expect_retval=0xC001D00D,
-        label="Verify DllMain + Relocations",
-    ),
-    # ── DLL: verify multi-import IAT resolution ────────────────────────────
-    Spec(
-        tuple(name for name, _, _ in BACKENDS),
-        "test_dll_advanced",
-        "VerifyImports",
-        expect_retval=0xCA11AB1E,
-        label="Verify Multi-Import Resolution",
-    ),
-    # ── DLL: verify TLS callback execution ─────────────────────────────────
-    Spec(
-        tuple(name for name, _, _ in BACKENDS),
-        "test_dll_tls",
-        "VerifyTLS",
-        expect_retval=0x71500C01,
-        label="Verify TLS Callbacks",
-    ),
-    # ── EXE: basic ──────────────────────────────────────────────────────────
-    Spec(
-        tuple(name for name, _, _ in BACKENDS),
-        "test_exe",
-        expect_stdout="Jumping to EXE Entry Point",
-        expect_rc=122,  # 0x7A
-        label="Run EXE",
-    ),
-    # ── EXE: advanced (stdlib init, heap allocs) ────────────────────────────
-    Spec(
-        tuple(name for name, _, _ in BACKENDS),
-        "test_exe_advanced",
-        expect_stdout="Successfully allocated and printed",
-        expect_rc=4919,  # 0x1337
-        label="Run Advanced EXE (Stdlib Init)",
-    ),
+    Spec(tuple(name for name, _, _ in BACKENDS), "test_dll", "SayHello", ["bonjour", "hello", "12"],
+         expect_retval=0xFEEDC0DE, label="Load DLL with exact args"),
+    Spec(tuple(name for name, _, _ in BACKENDS), "test_dll", "SayHello", ["wrong", "args"],
+         expect_retval=0xDEADBEEF, label="Edge Case: Bad Args Validation"),
+    Spec(tuple(name for name, _, _ in BACKENDS), "test_dll", expect_output="Export name is required for DLL payloads",
+         expect_fail=True, label="Edge Case: Missing Export Parameter"),
+    Spec(tuple(name for name, _, _ in BACKENDS), "test_dll_advanced", "AdvancedExport", ["advanced_test"],
+         expect_retval=0x1337C0DE, label="Load Advanced DLL (Imports, Allocs)"),
+    Spec(tuple(name for name, _, _ in BACKENDS), "test_dll_empty", "NonExistentExport",
+         expect_output="Requested PE data directory entry is missing", expect_fail=True,
+         label="Load Empty DLL (Missing Dirs)"),
+    Spec(tuple(name for name, _, _ in BACKENDS), "test_dll", "VerifyInit", expect_retval=0xC001D00D,
+         label="Verify DllMain + Relocations"),
+    Spec(tuple(name for name, _, _ in BACKENDS), "test_dll_advanced", "VerifyImports", expect_retval=0xCA11AB1E,
+         label="Verify Multi-Import Resolution"),
+    Spec(tuple(name for name, _, _ in BACKENDS), "test_dll_tls", "VerifyTLS", expect_retval=0x71500C01,
+         label="Verify TLS Callbacks"),
+    Spec(tuple(name for name, _, _ in BACKENDS), "test_exe", expect_output="Jumping to EXE Entry Point", expect_rc=122,
+         label="Run EXE"),
+    Spec(tuple(name for name, _, _ in BACKENDS), "test_exe_advanced",
+         expect_output="Successfully allocated and printed", expect_rc=4919, label="Run Advanced EXE (Stdlib Init)"),
 ]
 
 
 def expand_specs(specs):
-    """Expand Specs into TestCases, grouped by (backend, arch) for clean output."""
+    """Expand Specs into TestCases."""
     cases = []
     for backend_name, backend_label, backend_args in BACKENDS:
         for arch in ARCHES:
             for spec in specs:
                 if backend_name in spec.backends:
-                    cases.append(spec.to_test_case(backend_name, backend_label, backend_args, arch))
+                    cases.append(spec.to_test_case(backend_label, backend_args, arch))
     return cases
 
 
@@ -232,291 +142,125 @@ def expand_specs(specs):
 
 
 def build_mismatch_tests():
-    """Generate architecture-mismatch guard test cases through unified."""
     cases = []
     for loader_arch, payload_arch in [("x64", "x86"), ("x86", "x64")]:
         lb, pb = _BITS[loader_arch], _BITS[payload_arch]
-        expect = "Architecture incompatible with target payload"
         cases.append(
             TestCase(
-                name=f"Win32 ({loader_arch}) -> Arch Mismatch Guard "
-                f"({loader_arch} loader, {payload_arch} DLL)",
+                name=f"Win32 ({loader_arch}) -> Arch Mismatch Guard ({loader_arch} loader, {payload_arch} DLL)",
                 cmd=[
-                    os.path.join(
-                        os.path.abspath(_BIN[lb]),
-                        "Release",
-                        "unified.exe",
-                    ),
-                    "load",
-                    "pe",
-                    "-f",
-                    os.path.abspath(
-                        os.path.join(_TEST[pb], "Release", f"test_dll_{payload_arch}.dll")
-                    ),
-                    "-e",
-                    "SayHello",
+                    os.path.abspath(os.path.join(_BIN[lb], "Release", "unified.exe")),
+                    "load", "pe", "-f",
+                    os.path.abspath(os.path.join(_TEST[pb], "Release", f"test_dll_{payload_arch}.dll")),
+                    "-e", "SayHello",
                 ],
-                expect_stdout=expect,
+                expect_output="Architecture incompatible with target payload",
                 expect_fail=True,
             )
         )
     return cases
 
 
-# ── Corkami Fuzz Tests ──────────────────────────────────────────────────────
+# ── Corkami Fuzz Tests (local only, never enforced in CI) ──────────────────
 
 
 def load_corkami_tests(enabled=False):
-    """Return Corkami fuzz test cases if enabled, else an empty list."""
     if not enabled:
         return []
 
     if not os.path.exists(CORKAMI_DIR) or not os.listdir(CORKAMI_DIR):
         print(f"\n[{Colors.RED}ERROR{Colors.RESET}] Corkami fixtures missing!")
         print(f"[*] Expected: {Colors.YELLOW}{CORKAMI_DIR}{Colors.RESET}")
-        print(f"[*] Unzip '{CORKAMI_ZIP}' into that folder.")
-        print(f"[*] Password: {Colors.GREEN}infected{Colors.RESET}\n")
+        print(f"[*] Unzip '{CORKAMI_ZIP}' into that folder (password: infected).\n")
         sys.exit(1)
 
-    tests = []
-    for file in sorted(os.listdir(CORKAMI_DIR)):
-        if file.lower().endswith(".exe"):
-            tests.append(
-                TestCase(
-                    name=f"Corkami Parser Stress Test -> {file}",
-                    cmd=[
-                        os.path.abspath(os.path.join(_BIN[64], "Release", "unified.exe")),
-                        "load",
-                        "pe",
-                        "-f",
-                        os.path.join(CORKAMI_DIR, file),
-                    ],
-                    corkami_fuzz=True,
-                )
-            )
-    return tests
-
-
-# ── Preflight & Build-Tree Checks ──────────────────────────────────────────
-
-_BUILD_TREES = [
-    (BIN64_DIR, TEST64_DIR, "x64", "build64"),
-    (BIN32_DIR, TEST32_DIR, "x86", "build32"),
-]
-
-
-def preflight_check():
-    """Warn about missing build trees. Returns the set of missing dir paths."""
-    missing_dirs = set()
-    for bin_dir, test_dir, arch, build_name in _BUILD_TREES:
-        bin_missing = not os.path.isdir(bin_dir)
-        test_missing = not os.path.isdir(test_dir)
-        if not bin_missing and not test_missing:
-            continue
-        if bin_missing:
-            missing_dirs.add(bin_dir)
-        if test_missing:
-            missing_dirs.add(test_dir)
-        if bin_missing and test_missing:
-            print(
-                f"[{Colors.YELLOW}WARN{Colors.RESET}] {arch} not compiled. "
-                f"Run  build.bat tests pocs  to build everything."
-            )
-        elif bin_missing:
-            print(
-                f"[{Colors.YELLOW}WARN{Colors.RESET}] {arch} PoC loaders missing ({bin_dir}\\). "
-                f"Run  build.bat pocs."
-            )
-        else:
-            print(
-                f"[{Colors.YELLOW}WARN{Colors.RESET}] {arch} test fixtures missing ({test_dir}\\). "
-                f"Run  build.bat tests."
-            )
-    if missing_dirs:
-        print()
-    return missing_dirs
-
-
-def _missing_dir_for(path):
-    """Return the build subdir path if absent, or None."""
-    if "build32" in path:
-        check = BIN32_DIR if "pocs" in path else TEST32_DIR
-    elif "build64" in path:
-        check = BIN64_DIR if "pocs" in path else TEST64_DIR
-    else:
-        return None
-    return check if not os.path.isdir(check) else None
-
-
-# ── Test Executor ───────────────────────────────────────────────────────────
-
-
-def run_test(test, known_missing=None):
-    cmd = test.cmd
-
-    # Skip silently if preflight already warned about this build tree.
-    if known_missing:
-        if _missing_dir_for(cmd[0]) in known_missing:
-            return None
-        for i, token in enumerate(cmd):
-            if token == "-f" and i + 1 < len(cmd):
-                if _missing_dir_for(cmd[i + 1]) in known_missing:
-                    return None
-                break
-
-    print(f"[{Colors.YELLOW}TEST{Colors.RESET}] {test.name}")
-
-    if not os.path.exists(cmd[0]):
-        missing = _missing_dir_for(cmd[0])
-        if missing:
-            print(
-                f"  {Colors.BLUE}SKIP{Colors.RESET}: Build dependency {missing} not found."
-            )
-            return None
-        print(f"  {Colors.RED}FAIL{Colors.RESET}: Binary missing: {cmd[0]}")
-        return False
-
-    # Check that -f payload exists (e.g. PoCs built but tests weren't).
-    for i, token in enumerate(cmd):
-        if token == "-f" and i + 1 < len(cmd):
-            missing = _missing_dir_for(cmd[i + 1])
-            if missing:
-                print(
-                    f"  {Colors.BLUE}SKIP{Colors.RESET}: Build dependency {missing} not found."
-                )
-                return None
-            break
-
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=5,
+    return [
+        TestCase(
+            name=f"Corkami Parser Stress Test -> {f}",
+            cmd=[os.path.abspath(os.path.join(_BIN[64], "Release", "unified.exe")), "load", "pe", "-f",
+                 os.path.join(CORKAMI_DIR, f)],
+            corkami_fuzz=True,
         )
-        stdout = result.stdout
-        stderr = result.stderr
-        returncode = result.returncode
-
-        if returncode in [3221225477, -1073741819]:
-            print(f"  {Colors.RED}FAIL (0xC0000005){Colors.RESET}: Access violation!")
-            print(f"    --- STDOUT --- \n{stdout}")
-            print(f"    --- STDERR --- \n{stderr}")
-            return False
-
-        if test.corkami_fuzz:
-            if "[-] Error:" in stdout or "[-] Error:" in stderr:
-                print(
-                    f"  {Colors.YELLOW}PASS (Safely Rejected Malformed PE){Colors.RESET}"
-                )
-            elif "[!]" in stdout and returncode == 0:
-                print(f"  {Colors.GREEN}PASS (True Execution Success){Colors.RESET}")
-            else:
-                print(f"  {Colors.GREEN}PASS (Handled Safely){Colors.RESET}")
-            return True
-
-        found_expected = True
-        if test.expect_stdout:
-            found_expected = (
-                test.expect_stdout in stdout or test.expect_stdout in stderr
-            )
-
-        expected_fail = test.expect_fail
-
-        if test.expect_returncode is not None:
-            failed = returncode != test.expect_returncode
-            if failed:
-                print(
-                    f"  {Colors.RED}FAIL{Colors.RESET}: Expected return code "
-                    f"{test.expect_returncode}, got {returncode}"
-                )
-        else:
-            failed = returncode != 0
-
-        if (expected_fail == failed) and found_expected:
-            print(f"  {Colors.GREEN}PASS{Colors.RESET}")
-            return True
-        else:
-            print(f"  {Colors.RED}FAIL{Colors.RESET}")
-            if expected_fail and not failed:
-                print("    Reason: expected non-zero exit but process succeeded.")
-            elif not expected_fail and failed:
-                print("    Reason: expected clean exit but process returned an error.")
-            elif not found_expected:
-                print("    Reason: expected output not found in stdout or stderr.")
-            print(f"    Expected: '{test.expect_stdout or '(none)'}'")
-            print(f"    Matched : {found_expected}")
-            print(f"    --- STDOUT --- \n{stdout}")
-            print(f"    --- STDERR --- \n{stderr}")
-            return False
-
-    except subprocess.TimeoutExpired:
-        print(f"  {Colors.RED}FAIL (TIMEOUT){Colors.RESET}")
-        return False
-    except Exception as e:
-        print(f"  {Colors.RED}FAIL (EXCEPTION){Colors.RESET}: {e}")
-        return False
+        for f in sorted(os.listdir(CORKAMI_DIR))
+        if f.lower().endswith(".exe")
+    ]
 
 
 # ── Mutation Engine Tests ───────────────────────────────────────────────────
 
 
-def load_mutation_tests(enabled=False):
-    """Generate mutated PEs on the fly and add them to the test matrix."""
+def load_mutation_tests(enabled=False, selected_arches=(), excluded=()):
+    """Generate mutated PEs and enforce `expect_loadable` strictly: benign
+    mutations must load AND run; breaking mutations must be rejected with an
+    explicit [ERR] marker and a non-zero exit. A crash is never acceptable."""
     if not enabled:
         return []
 
     if pe_mutator is None or pe_mutator.pefile is None:
-        print(
-            f"\n[{Colors.YELLOW}SKIP{Colors.RESET}] Mutator disabled (pefile not installed)."
+        raise SystemExit(
+            "ERROR: --mutate requires 'pefile' (pip install -r requirements-dev.txt). "
+            "Refusing to silently run zero mutation cases."
         )
-        return []
 
     print(f"\n[{Colors.BLUE}INFO{Colors.RESET}] Generating mutated PE variants...")
     tests = []
 
-    for arch in ARCHES:
+    for arch in selected_arches:
         bits = _BITS[arch]
         base_exe = os.path.join(_TEST[bits], "Release", f"test_exe_{arch}.exe")
         base_dll = os.path.join(_TEST[bits], "Release", f"test_dll_{arch}.dll")
 
-        # Create a dedicated directory for mutated payloads
         out_dir = os.path.join(f"build{bits}", "mutations")
         os.makedirs(out_dir, exist_ok=True)
 
-        for backend_name, backend_label, backend_args in BACKENDS:
+        for _backend_name, backend_label, backend_args in BACKENDS:
+            case_prefix = f"{backend_label} ({arch})"
+            if any(substr in case_prefix for substr in excluded):
+                continue
             loader_exe = os.path.join(_BIN[bits], "Release", "unified.exe")
 
             for mutation in pe_mutator.ALL_MUTATIONS:
-                # Select the correct base file based on mutation requirements
                 if mutation.applies_to == "dll":
-                    src_file = base_dll
-                    cmd_args = ["-e", "SayHello"]  # DLLs need an export target
+                    src_file, cmd_args, loadable_stdout, loadable_rc = (
+                        base_dll, ["-e", "SayHello"], "Export returned: 0x", None)
                 else:
-                    src_file = base_exe
-                    cmd_args = []
+                    src_file, cmd_args, loadable_stdout, loadable_rc = (
+                        base_exe, [], "Jumping to EXE Entry Point", 122)
 
-                # Skip if the user hasn't built the baseline tests yet
                 if not os.path.exists(src_file):
+                    tests.append(TestCase(
+                        name=f"{case_prefix} -> Mutation: {mutation.name}",
+                        cmd=[],
+                        setup_error=f"mutation base missing; run 'build.bat tests': {src_file}",
+                    ))
                     continue
 
                 try:
                     mutated_path = pe_mutator.mutate_pe(src_file, mutation, out_dir)
                 except pe_mutator.MutationError as e:
-                    print(f"[{Colors.YELLOW}WARN{Colors.RESET}] {e}")
+                    tests.append(TestCase(
+                        name=f"{case_prefix} -> Mutation: {mutation.name}",
+                        cmd=[],
+                        setup_error=str(e),
+                    ))
                     continue
 
-                tests.append(
-                    TestCase(
-                        name=f"{backend_label} ({arch}) -> Mutation: {mutation.name}",
-                        cmd=[loader_exe, "load", "pe", "-f", os.path.abspath(mutated_path)] +
-                        list(backend_args) + cmd_args,
-                        expect_fail=not mutation.expect_loadable,
-                        corkami_fuzz=True,  # Reuse fuzz logic to ensure we don't 0xC0000005
-                    )
-                )
+                if mutation.expect_loadable:
+                    tests.append(TestCase(
+                        name=f"{case_prefix} -> Mutation: {mutation.name}",
+                        cmd=[loader_exe, "load", "pe", "-f", os.path.abspath(mutated_path)]
+                        + list(backend_args) + cmd_args,
+                        expect_output=loadable_stdout,
+                        expect_returncode=loadable_rc,
+                    ))
+                else:
+                    tests.append(TestCase(
+                        name=f"{case_prefix} -> Mutation: {mutation.name}",
+                        cmd=[loader_exe, "load", "pe", "-f", os.path.abspath(mutated_path)]
+                        + list(backend_args) + cmd_args,
+                        expect_fail=True,
+                        corkami_fuzz=True,
+                    ))
     return tests
 
 
@@ -524,90 +268,50 @@ def load_mutation_tests(enabled=False):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="SindriKit Integration Test Runner")
-    parser.add_argument(
-        "--corkami",
-        action="store_true",
-        help="Include Corkami malformed-PE stress tests",
-    )
-    # Add this argument
-    parser.add_argument(
-        "--mutate",
-        action="store_true",
-        help="Generate and run dynamic PE mutations to stress-test the loader",
-    )
-    parser.add_argument(
-        "--arch",
-        action="append",
-        choices=list(ARCHES),
-        help="Only run the given architecture (repeatable).",
-    )
-    parser.add_argument(
-        "--exclude-substr",
-        action="append",
-        default=[],
-        metavar="S",
-        help="Skip test cases whose name contains S (repeatable).",
-    )
+    parser = argparse.ArgumentParser(description="SindriKit PE Integration Test Runner")
+    parser.add_argument("--corkami", action="store_true",
+                        help="Include Corkami malformed-PE stress tests (local only, not CI)")
+    parser.add_argument("--mutate", action="store_true",
+                        help="Generate and run dynamic PE mutations to stress-test the loader")
+    parser.add_argument("--arch", action="append", choices=list(ARCHES),
+                        help="Only run the given architecture (repeatable).")
+    parser.add_argument("--exclude-substr", action="append", default=[], metavar="S",
+                        help="Skip test cases whose name contains S (repeatable).")
+    parser.add_argument("--strict", action="store_true",
+                        help="Treat any skip / missing dependency as a hard failure (CI mode).")
     args = parser.parse_args()
 
     print("==================================================")
     print("         SindriKit Integration Tests              ")
     print("==================================================")
 
-    preflight_missing = preflight_check()
+    selected_arches = tuple(args.arch or ARCHES)
+    preflight_missing = preflight(TREES, selected_arches)
+    if args.strict and preflight_missing:
+        print(f"[{Colors.RED}ERROR{Colors.RESET}] --strict: build trees missing: {sorted(preflight_missing)}")
+        sys.exit(1)
 
-    # Append the mutation tests to the matrix
     full_matrix = (
         expand_specs(SPECS)
         + build_mismatch_tests()
         + load_corkami_tests(enabled=args.corkami)
-        + load_mutation_tests(enabled=args.mutate)
+        + load_mutation_tests(enabled=args.mutate, selected_arches=selected_arches, excluded=args.exclude_substr)
     )
+    full_matrix = filter_cases(full_matrix, selected_arches, args.exclude_substr)
 
-    if args.arch:
-        full_matrix = [t for t in full_matrix if any(f"({a})" in t.name for a in args.arch)]
-    if args.exclude_substr:
-        full_matrix = [t for t in full_matrix if not any(s in t.name for s in args.exclude_substr)]
+    print(f"[*] {len(full_matrix)} test cases ({len(SPECS)} specs x {len(BACKENDS)} backends x {len(ARCHES)} arches)\n")
 
-    print(
-        f"[*] {len(full_matrix)} test cases "
-        f"({len(SPECS)} specs x {len(BACKENDS)} backends x {len(ARCHES)} arches)\n"
-    )
-
-    passed = 0
-    skipped = 0
-    total = len(full_matrix)
-
+    passed = skipped = 0
     for test in full_matrix:
-        result = run_test(test, known_missing=preflight_missing)
+        result = run_case(test, TREES, known_missing=preflight_missing)
         if result is True:
             passed += 1
         elif result is None:
             skipped += 1
 
-    ran = total - skipped
-    print("==================================================")
-    if skipped:
-        print(
-            f"[{Colors.YELLOW}INFO{Colors.RESET}] {skipped}/{total} tests skipped "
-            f"(build tree incomplete. Run  build.bat tests pocs)."
-        )
-    if ran == 0:
-        print(f"Result: {Colors.YELLOW}No tests ran.{Colors.RESET}")
-        sys.exit(0)
-
-    pct = (passed / ran) * 100
-    failed = ran - passed
-    color = Colors.GREEN if failed == 0 else Colors.RED
-    print(
-        f"Result: {color}{pct:.1f}%. {passed}/{ran} passed"
-        f"{', ' + str(failed) + ' failed' if failed else ''}"
-        f"{f' ({skipped} skipped)' if skipped else ''}{Colors.RESET}"
-    )
-    sys.exit(0 if failed == 0 else 1)
+    sys.exit(summarize(passed, skipped, len(full_matrix), args.strict))
 
 
 if __name__ == "__main__":
-    os.system("")  # Enable VT100 ANSI sequences on Windows consoles
+    vt100_enable()
     main()

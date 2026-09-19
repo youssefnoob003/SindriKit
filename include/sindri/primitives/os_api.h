@@ -50,9 +50,13 @@ typedef snd_status_t(WINAPI *snd_process_create_thread_cb)(HANDLE process, PVOID
 typedef snd_status_t(WINAPI *snd_process_close_cb)(HANDLE handle);
 
 // Thread Capabilities
+typedef struct snd_thread_registers SND_THREAD_REGISTERS; // Forward declaration
+
 typedef snd_status_t(WINAPI *snd_thread_queue_apc_cb)(HANDLE thread, PVOID apc_routine, PVOID apc_argument);
 typedef snd_status_t(WINAPI *snd_thread_resume_cb)(HANDLE thread);
 typedef snd_thread_resume_cb snd_thread_suspend_cb;
+typedef snd_status_t(WINAPI *snd_thread_get_context_cb)(HANDLE thread, SND_THREAD_REGISTERS *out_regs);
+typedef snd_status_t(WINAPI *snd_thread_set_context_cb)(HANDLE thread, const SND_THREAD_REGISTERS *in_regs);
 typedef snd_process_close_cb snd_thread_close_cb;
 
 /**
@@ -115,10 +119,12 @@ SND_SHUFFLE_END
  */
 SND_SHUFFLE_START
 typedef struct {
-    snd_thread_queue_apc_cb queue_apc;
-    snd_thread_resume_cb    resume_thread;
-    snd_thread_suspend_cb   suspend_thread;
-    snd_thread_close_cb     close_handle;
+    snd_thread_queue_apc_cb   queue_apc;
+    snd_thread_resume_cb      resume_thread;
+    snd_thread_suspend_cb     suspend_thread;
+    snd_thread_get_context_cb get_context;
+    snd_thread_set_context_cb set_context;
+    snd_thread_close_cb       close_handle;
 } snd_thread_api_t;
 SND_SHUFFLE_END
 

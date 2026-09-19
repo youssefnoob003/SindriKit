@@ -359,7 +359,7 @@ BENIGN_MUTATIONS: List[Mutation] = [
         "stripped_relocs",
         "Stripped reloc directory (.reloc removed)",
         strip_relocs_from_exe,
-        True,
+        False,
         "exe",
     ),
     Mutation("garbage_dos_stub", "Garbage DOS stub overwrites", garbage_dos_stub, True),

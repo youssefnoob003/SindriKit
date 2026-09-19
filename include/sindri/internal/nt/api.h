@@ -71,6 +71,22 @@ typedef NTSTATUS(NTAPI *SND_NtOpenProcess_t)(HANDLE *ProcessHandle, ACCESS_MASK 
                                              PVOID ClientId);
 
 /*
+ * @brief Type definition for NtOpenThread function.
+ */
+typedef NTSTATUS(NTAPI *SND_NtOpenThread_t)(PHANDLE ThreadHandle, ACCESS_MASK DesiredAccess, PVOID ObjectAttributes,
+                                            PVOID ClientId);
+
+/*
+ * @brief Type definition for NtGetContextThread function.
+ */
+typedef NTSTATUS(NTAPI *SND_NtGetContextThread_t)(HANDLE ThreadHandle, PVOID ThreadContext);
+
+/*
+ * @brief Type definition for NtSetContextThread function.
+ */
+typedef NTSTATUS(NTAPI *SND_NtSetContextThread_t)(HANDLE ThreadHandle, PVOID ThreadContext);
+
+/*
  * @brief Type definition for NtWriteVirtualMemory function.
  */
 typedef NTSTATUS(NTAPI *SND_NtWriteVirtualMemory_t)(HANDLE ProcessHandle, PVOID BaseAddress, PVOID Buffer, SIZE_T Size,

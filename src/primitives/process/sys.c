@@ -20,12 +20,12 @@ static snd_status_t WINAPI sys_create_process_params(const void *win32_path_unic
         return SND_ERR(SND_STATUS_PEB_LOCAL_NOT_FOUND);
     }
 
-    PSND_RTL_USER_PROCESS_PARAMETERS parent_params = NULL;
-    SND_TRY(snd_env_get_process_params(peb, &parent_params));
+    PSND_RTL_USER_PROCESS_PARAMETERS base_params = NULL;
+    SND_TRY(snd_env_get_process_params(peb, &base_params));
+    PSND_RTL_USER_PROCESS_PARAMETERS_FULL parent_params = (PSND_RTL_USER_PROCESS_PARAMETERS_FULL)base_params;
 
     PWSTR  env       = (PWSTR)parent_params->Environment;
-    size_t env_chars = snd_wcsn_env_size(env, SND_UNICODE_STRING_MAX_CHARS);
-    size_t env_bytes = env_chars * sizeof(wchar_t);
+    size_t env_bytes = snd_wcsn_env_size(env, SND_UNICODE_STRING_MAX_CHARS);
 
     SND_UNICODE_STRING u_cmd = {0};
     if (cmd_line) {
@@ -38,8 +38,12 @@ static snd_status_t WINAPI sys_create_process_params(const void *win32_path_unic
     }
 
     SIZE_T header_size = sizeof(SND_RTL_USER_PROCESS_PARAMETERS_FULL);
-    SIZE_T total_size  = header_size + win32_path->MaximumLength + u_cmd.MaximumLength +
-                         parent_params->CurrentDirectory.DosPath.MaximumLength + env_bytes;
+    SIZE_T total_size  = header_size + SND_ALIGN_UP(win32_path->MaximumLength, 8) +
+                         SND_ALIGN_UP(u_cmd.MaximumLength, 8) +
+                         SND_ALIGN_UP(parent_params->CurrentDirectory.DosPath.MaximumLength, 8) +
+                         SND_ALIGN_UP(parent_params->DllPath.MaximumLength, 8) +
+                         SND_ALIGN_UP(parent_params->DesktopInfo.MaximumLength, 8) +
+                         SND_ALIGN_UP(parent_params->WindowTitle.MaximumLength, 8) + SND_ALIGN_UP(env_bytes, 8);
 
     PVOID  params_base = NULL;
     SIZE_T alloc_size  = total_size;
@@ -50,13 +54,11 @@ static snd_status_t WINAPI sys_create_process_params(const void *win32_path_unic
                                      .arg4 = &alloc_size,
                                      .arg5 = (PVOID)(ULONG_PTR)(SND_MEM_COMMIT | SND_MEM_RESERVE),
                                      .arg6 = (PVOID)(ULONG_PTR)SND_PAGE_READWRITE};
-
-    NTSTATUS nt_status;
+    NTSTATUS           nt_status;
     SND_TRY(snd_syscall_invoke(SND_HASH_NTALLOCATEVIRTUALMEMORY, &alloc_args, &nt_status));
     if (SND_NT_FAILURE(nt_status)) {
         return SND_ERR_NT(SND_STATUS_PROCESS_CREATE_PARAMS_FAILED, nt_status);
     }
-
     snd_memzero(params_base, alloc_size);
 
     PSND_RTL_USER_PROCESS_PARAMETERS_FULL params = (PSND_RTL_USER_PROCESS_PARAMETERS_FULL)params_base;
@@ -64,33 +66,33 @@ static snd_status_t WINAPI sys_create_process_params(const void *win32_path_unic
     params->Length                               = (ULONG)total_size;
     params->Flags                                = 1; // RTL_USER_PROC_PARAMS_NORMALIZED
 
-    params->ConsoleHandle  = parent_params->ConsoleHandle;
-    params->ConsoleFlags   = parent_params->ConsoleFlags;
-    params->StandardInput  = parent_params->StandardInput;
-    params->StandardOutput = parent_params->StandardOutput;
-    params->StandardError  = parent_params->StandardError;
+    params->ConsoleHandle   = NULL;
+    params->ConsoleFlags    = 0;
+    params->StandardInput   = NULL;
+    params->StandardOutput  = NULL;
+    params->StandardError   = NULL;
+    params->WindowFlags     = parent_params->WindowFlags;
+    params->ShowWindowFlags = parent_params->ShowWindowFlags;
 
-    PBYTE cursor = (PBYTE)params_base + header_size;
+    unsigned char *cursor = SND_PTR_ADD(params_base, header_size);
 
-    // 1. ImagePathName
     params->ImagePathName.Length        = win32_path->Length;
     params->ImagePathName.MaximumLength = win32_path->MaximumLength;
     params->ImagePathName.Buffer        = (PWSTR)cursor;
     if (win32_path->Buffer && win32_path->Length > 0) {
         snd_memcpy(cursor, win32_path->Buffer, win32_path->Length);
     }
-    cursor += win32_path->MaximumLength;
+    cursor = SND_PTR_ADD(cursor, SND_ALIGN_UP(win32_path->MaximumLength, 8));
 
-    // 2. CommandLine
     params->CommandLine.Length        = u_cmd.Length;
     params->CommandLine.MaximumLength = u_cmd.MaximumLength;
     params->CommandLine.Buffer        = (PWSTR)cursor;
     if (u_cmd.Buffer && u_cmd.Length > 0) {
         snd_memcpy(cursor, u_cmd.Buffer, u_cmd.Length);
     }
-    cursor += u_cmd.MaximumLength;
+    cursor = SND_PTR_ADD(cursor, SND_ALIGN_UP(u_cmd.MaximumLength, 8));
 
-    // 3. CurrentDirectory
+    params->CurrentDirectory.Handle                = NULL;
     params->CurrentDirectory.DosPath.Length        = parent_params->CurrentDirectory.DosPath.Length;
     params->CurrentDirectory.DosPath.MaximumLength = parent_params->CurrentDirectory.DosPath.MaximumLength;
     params->CurrentDirectory.DosPath.Buffer        = (PWSTR)cursor;
@@ -98,13 +100,36 @@ static snd_status_t WINAPI sys_create_process_params(const void *win32_path_unic
         snd_memcpy(cursor, parent_params->CurrentDirectory.DosPath.Buffer,
                    parent_params->CurrentDirectory.DosPath.Length);
     }
-    cursor += parent_params->CurrentDirectory.DosPath.MaximumLength;
+    cursor = SND_PTR_ADD(cursor, SND_ALIGN_UP(parent_params->CurrentDirectory.DosPath.MaximumLength, 8));
 
-    // 4. Environment
+    params->DllPath.Length        = parent_params->DllPath.Length;
+    params->DllPath.MaximumLength = parent_params->DllPath.MaximumLength;
+    params->DllPath.Buffer        = (PWSTR)cursor;
+    if (parent_params->DllPath.Buffer && parent_params->DllPath.Length > 0) {
+        snd_memcpy(cursor, parent_params->DllPath.Buffer, parent_params->DllPath.Length);
+    }
+    cursor = SND_PTR_ADD(cursor, SND_ALIGN_UP(parent_params->DllPath.MaximumLength, 8));
+
+    params->DesktopInfo.Length        = parent_params->DesktopInfo.Length;
+    params->DesktopInfo.MaximumLength = parent_params->DesktopInfo.MaximumLength;
+    params->DesktopInfo.Buffer        = (PWSTR)cursor;
+    if (parent_params->DesktopInfo.Buffer && parent_params->DesktopInfo.Length > 0) {
+        snd_memcpy(cursor, parent_params->DesktopInfo.Buffer, parent_params->DesktopInfo.Length);
+    }
+    cursor = SND_PTR_ADD(cursor, SND_ALIGN_UP(parent_params->DesktopInfo.MaximumLength, 8));
+
+    params->WindowTitle.Length        = parent_params->WindowTitle.Length;
+    params->WindowTitle.MaximumLength = parent_params->WindowTitle.MaximumLength;
+    params->WindowTitle.Buffer        = (PWSTR)cursor;
+    if (parent_params->WindowTitle.Buffer && parent_params->WindowTitle.Length > 0) {
+        snd_memcpy(cursor, parent_params->WindowTitle.Buffer, parent_params->WindowTitle.Length);
+    }
+    cursor = SND_PTR_ADD(cursor, SND_ALIGN_UP(parent_params->WindowTitle.MaximumLength, 8));
+
     if (env_bytes > 0 && env) {
         params->Environment = cursor;
         snd_memcpy(cursor, env, env_bytes);
-        *(ULONG_PTR *)((PBYTE)params + SND_ENVSIZE_OFFSET) = env_bytes;
+        *(ULONG_PTR *)SND_PTR_ADD(params, SND_ENVSIZE_OFFSET) = env_bytes;
     }
 
     *out_params = params_base;
@@ -117,14 +142,12 @@ static snd_status_t WINAPI sys_create_process(const snd_process_api_t *api, cons
     *out_process = NULL;
     *out_thread  = NULL;
 
-    // 1. Win32 path for RTL_USER_PROCESS_PARAMETERS
     size_t             img_len_chars = snd_wcsnlen(image_path, SND_UNICODE_STRING_MAX_CHARS);
     SND_UNICODE_STRING u_win32_path  = {0};
     u_win32_path.Length              = (USHORT)(img_len_chars * sizeof(wchar_t));
     u_win32_path.MaximumLength       = u_win32_path.Length + sizeof(wchar_t);
     u_win32_path.Buffer              = (PWSTR)image_path;
 
-    // 2. NT path (\??\C:\...) for Attribute List
     wchar_t nt_path[SND_MAX_PATH] = L"\\??\\";
     snd_wcsncpy(nt_path + 4, SND_MAX_PATH - 4, image_path, SND_MAX_PATH - 4);
 
@@ -139,20 +162,18 @@ static snd_status_t WINAPI sys_create_process(const snd_process_api_t *api, cons
         SND_TRY(api->create_process_params(&u_win32_path, command_line, &process_params));
     }
 
-    // 3. SND_PS_CREATE_INFO
     SND_PS_CREATE_INFO create_info;
     snd_memzero(&create_info, sizeof(create_info));
     create_info.Size                                          = sizeof(SND_PS_CREATE_INFO);
     create_info.State                                         = SND_PS_CREATE_INITIAL_STATE;
-    create_info.StateUnion.InitState.InitFlagsUnion.InitFlags = 3;
+    create_info.StateUnion.InitState.InitFlagsUnion.InitFlags = 0;
 
-    // 4. SND_PS_ATTRIBUTE_LIST setup
     SND_PS_ATTRIBUTE_LIST attr_list;
     snd_memzero(&attr_list, sizeof(attr_list));
     attr_list.TotalLength                    = sizeof(SND_PS_ATTRIBUTE_LIST);
     attr_list.Attributes[0].Attribute        = SND_PS_ATTRIBUTE_IMAGE_NAME;
-    attr_list.Attributes[0].Size             = u_nt_path.Length;            // e.g. 70
-    attr_list.Attributes[0].ValueUnion.Value = (ULONG_PTR)u_nt_path.Buffer; // L"\\??\\C:\\..."
+    attr_list.Attributes[0].Size             = u_nt_path.Length;
+    attr_list.Attributes[0].ValueUnion.Value = (ULONG_PTR)u_nt_path.Buffer;
     attr_list.Attributes[0].ReturnLength     = NULL;
 
     snd_syscall_args_t args = {.arg1  = out_process,

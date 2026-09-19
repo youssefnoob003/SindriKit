@@ -18,6 +18,16 @@
 #endif
 
 /**
+ * @def SND_ALIGNED(x)
+ * @brief Enforces struct alignment.
+ */
+#if defined(_MSC_VER)
+#define SND_ALIGNED(x) __declspec(align(x))
+#else
+#define SND_ALIGNED(x) __attribute__((aligned(x)))
+#endif
+
+/**
  * @def SND_FORCE_INLINE
  * @brief Compiler-agnostic macro to force function inlining.
  * Useful for embedding bounds checks and offset calculations directly into the

@@ -18,6 +18,7 @@ static void print_global_usage(const char *prog) {
                 "  load coff      Load and execute a COFF object file\n"
                 "  inject classic Classic remote thread injection into an existing process\n"
                 "  inject apc     Early-bird APC injection (spawns target process)\n"
+                "  inject hijack  Thread-hijack injection (spawns suspended target)\n"
 #if defined(_WIN32) && !defined(_WIN64)
                 "  hg             Heaven's Gate (WOW64 32-bit only)\n"
 #endif
@@ -63,6 +64,8 @@ int unified_main(int argc, char *argv[]) {
                 return cmd_inject_classic(argc, argv, prog);
             if (poc_strcmp(sub, "apc") == 0)
                 return cmd_inject_apc(argc, argv, prog);
+            if (poc_strcmp(sub, "hijack") == 0)
+                return cmd_inject_hijack(argc, argv, prog);
             poc_fprintf("[-] Unknown inject subcommand: %s\n", sub);
             return SND_STATUS_INVALID_COMMAND_LINE_ARG;
         }

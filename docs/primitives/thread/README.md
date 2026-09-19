@@ -1,6 +1,6 @@
 # Thread Primitives
 
-Operations on an **existing** thread handle: queue an APC, resume, suspend, and close. All work routes through an injected `snd_thread_api_t` table.
+Operations on an **existing** thread handle: queue an APC, resume, suspend, read/write its context, and close. All work routes through an injected `snd_thread_api_t` table.
 
 Primary consumer: APC injection (`snd_inj_ctx_t.thread_api`) — see [injection internals](../../injection/internals.md).
 
@@ -21,7 +21,11 @@ Primary consumer: APC injection (`snd_inj_ctx_t.thread_api`) — see [injection 
 | `queue_apc` | Queue an asynchronous procedure call to a thread |
 | `resume_thread` | Decrement a thread's suspend count |
 | `suspend_thread` | Increment a thread's suspend count |
+| `get_context` | Read the thread's context into a portable `SND_THREAD_REGISTERS` |
+| `set_context` | Write a portable `SND_THREAD_REGISTERS` onto the thread |
 | `close_handle` | Release a thread handle |
+
+`SND_THREAD_REGISTERS` (`sindri/primitives/thread.h`) is a portable 1:1 projection of the native context (`ip`, `sp`, `cx`, `dx`, `rflags`). Entry-frame ABI macros the hijack engine composes live natively in the Hijack engine.
 
 ## Source map
 

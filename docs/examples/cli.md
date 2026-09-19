@@ -9,6 +9,7 @@ unified load pe      <options>
 unified load coff    <options>
 unified inject classic <mode> <options>
 unified inject apc     <mode> <options>
+unified inject hijack  <mode> <options>
 unified hg                          # x86 builds only
 ```
 
@@ -20,9 +21,9 @@ Every command accepts `-h` / `--help`. Unknown commands, subcommands, or options
 |---|---|---|
 | `-f <path>` | all except `hg` | Payload path (PE, COFF, or raw shellcode depending on command/mode) |
 | `-e <name>` | `load pe`, `load coff`, `inject */coff` | DLL export (`load pe`) or BOF entry symbol (COFF paths; default `go`) |
-| `-a <arg>` | `load pe`, `load coff`, `inject classic/apc coff` | Arguments; encoding differs per command — see below |
+| `-a <arg>` | `load pe`, `load coff`, `inject classic/apc/hijack coff` | Arguments; encoding differs per command — see below |
 | `-p <pid>` | `inject classic` | Target process ID, base 0 (decimal or `0x` hex) |
-| `-t <path>` | `inject apc` | Executable image to spawn as the suspended target |
+| `-t <path>` | `inject apc`, `inject hijack` | Executable image to spawn as the suspended target |
 | `--win` / `--nt` / `--sys` | all except `hg` | Execution backend (see below) |
 | `--invoke-direct` / `--invoke-indirect` / `--invoke-spoofed` | all except `hg` | Syscall invoker; only effective with `--sys` |
 | `--resolve-scan` / `--resolve-sort` | all except `hg` | SSN resolver selection; only effective with `--sys` |
@@ -34,8 +35,8 @@ Every command accepts `-h` / `--help`. Unknown commands, subcommands, or options
 |---|---|---|
 | `load pe` | yes (max 32) | Each token that parses fully as a base-0 integer is passed by value; otherwise the raw argument string pointer is passed. Consumed by `snd_ffi_execute` as a `UINT_PTR[]` array. |
 | `load coff` | yes (max 32) | Same parsing as `load pe`; marshaled to `snd_ldr_coff_execute_image` as a packed `UINT_PTR[]` buffer with a byte length. |
-| `inject classic coff`, `inject apc coff` | no (last wins) | A single raw string buffer; length passed to the chain is `strlen + 1`. |
-| `inject classic shell/pe`, `inject apc shell/pe` | no | Parsed but unused. |
+| `inject classic coff`, `inject apc coff`, `inject hijack coff` | no (last wins) | A single raw string buffer; length passed to the chain is `strlen + 1`. |
+| `inject classic shell/pe`, `inject apc shell/pe`, `inject hijack shell/pe` | no | Parsed but unused. |
 
 > [!NOTE]
 > Because non-numeric `-a` values are passed as pointers into `argv`, they remain valid only for the lifetime of the process/command. The COFF injection modes pass a single string buffer instead, matching the classic BOF argument convention.
@@ -92,6 +93,7 @@ For `--sys`, `unified_backend_init` maps a clean `ntdll` from KnownDlls (no disk
 | `load coff` | `--win`¹ | indirect | scan → sort |
 | `inject classic` | `--nt` | indirect | scan → sort |
 | `inject apc` | `--sys` | direct | scan → sort |
+| `inject hijack` | `--nt` | indirect | scan → sort |
 
 ¹ `--nt` in CRT-less builds.
 
@@ -115,6 +117,7 @@ For `--sys`, `unified_backend_init` maps a clean `ntdll` from KnownDlls (no disk
 | `pocs/src/cmd_load_coff.c` | `unified load coff` |
 | `pocs/src/cmd_inject_classic.c` | `unified inject classic {shell,pe,coff}` |
 | `pocs/src/cmd_inject_apc.c` | `unified inject apc {shell,pe,coff}` |
+| `pocs/src/cmd_inject_hijack.c` | `unified inject hijack {shell,pe,coff}` |
 | `pocs/src/cmd_hg.c` | `unified hg` |
 
 The command layer never reimplements library logic; it only parses flags and composes public APIs.

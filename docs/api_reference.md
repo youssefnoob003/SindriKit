@@ -66,7 +66,7 @@ Functions return `snd_status_t` unless noted. Distinctive codes are named; do no
 | `sindri/primitives.h` | OS API tables, backends, files, syscalls, FFI, Heaven's Gate, thread |
 | `sindri/parsers.h` | PE, COFF, env |
 | `sindri/loaders.h` | PE and COFF loaders |
-| `sindri/injection.h` | Classic and APC injection |
+| `sindri/injection.h` | Classic, APC, and hijack injection |
 
 Prefer the smallest umbrella that matches the domain. `sindri/internal/` is consumed by the engine; it is not a supported application API.
 
@@ -304,15 +304,7 @@ Win32 `open` wants Win32/DOS names. NT/sys accept Object Manager paths (`\KnownD
 | `create_remote_thread` | `(process, start, param, HANDLE *out_thread)` |
 | `close_handle` | Process or thread handle |
 
-NT/sys create via `NtCreateUserProcess`; Win32 via `CreateProcessW`. Custom RTL builders:
-
-```c
-snd_status_t WINAPI snd_nt_create_process_custom(
-    const wchar_t *image_path, const wchar_t *command_line,
-    HANDLE *out_process, HANDLE *out_thread,
-    snd_process_create_params_cb create_cb, snd_process_free_params_cb free_cb);
-snd_status_t WINAPI snd_sys_create_process_custom(/* same */);
-```
+NT/sys create via `NtCreateUserProcess`, with parameters built by the table's `create_process_params`; Win32 via `CreateProcessW`. To customize parameter building, supply your own `snd_process_api_t` with `create_process_params` / `free_process_params` callbacks.
 
 Codes include `SND_STATUS_PROCESS_CREATE_FAILED`, `PROCESS_OPEN_FAILED`, `PROCESS_REMOTE_*`, `THREAD_REMOTE_CREATE_FAILED`, `HANDLE_CLOSE_FAILED`.
 
@@ -322,9 +314,13 @@ Codes include `SND_STATUS_PROCESS_CREATE_FAILED`, `PROCESS_OPEN_FAILED`, `PROCES
 |---|---|
 | `queue_apc` | `(HANDLE thread, PVOID apc_routine, PVOID apc_argument)` |
 | `resume_thread` / `suspend_thread` | `(HANDLE thread)` |
+| `get_context` | `(HANDLE thread, SND_THREAD_REGISTERS *out_regs)` |
+| `set_context` | `(HANDLE thread, const SND_THREAD_REGISTERS *in_regs)` |
 | `close_handle` | `(HANDLE)` |
 
-Codes: `SND_STATUS_THREAD_QUEUE_FAILED`, `THREAD_RESUME_FAILED`, `THREAD_SUSPEND_FAILED`.
+`SND_THREAD_REGISTERS` is the portable machine-context projection (`ip`, `sp`, `cx`, `dx`, `rflags`) defined in `sindri/primitives/thread.h`. Entry-frame ABI policy (alignment, register-arg marshalling, EFLAGS) lives natively in the Hijack engine. Backends map the portable registers 1:1 to the native `CONTEXT` using `sindri/internal/windows/context.h`.
+
+Codes: `SND_STATUS_THREAD_QUEUE_FAILED`, `THREAD_RESUME_FAILED`, `THREAD_SUSPEND_FAILED`, `THREAD_GET_CONTEXT_FAILED`, `THREAD_SET_CONTEXT_FAILED`.
 
 ### Backend instances
 
@@ -753,7 +749,7 @@ typedef struct _snd_ldr_coff_ctx {
 
 ## Injection
 
-Include `sindri/injection.h`. Classic opens an existing PID. APC creates a suspended process from `target_image_path` and queues an APC on the primary thread.
+Include `sindri/injection.h`. Classic opens an existing PID. APC creates a suspended process from `target_image_path` and queues an APC on the primary thread. Hijack creates a suspended process and rewrites its initial thread's context before resuming.
 
 ### Shared context
 
@@ -782,8 +778,8 @@ typedef struct _snd_inj_ctx_t {
 
     const snd_buffer_t      *payload;
     const snd_process_api_t *proc_api;
-    const snd_thread_api_t  *thread_api;       /* APC */
-    const wchar_t           *target_image_path; /* APC */
+    const snd_thread_api_t  *thread_api;        /* APC, hijack */
+    const wchar_t           *target_image_path; /* APC, hijack */
 } snd_inj_ctx_t;
 
 const char *snd_inj_stage_to_string(snd_inj_stage_t stage); /* "" if !SND_DEBUG */
@@ -796,6 +792,7 @@ void        snd_inj_cleanup(snd_inj_ctx_t *ctx);
 |---|---|
 | Classic | `target_pid`, `proc_api`; `payload` for alloc/write (shell). PE/COFF: loader ctx + `inj_ctx` |
 | APC | `target_image_path`, `proc_api`, `thread_api`; `payload` for shell |
+| Hijack | `target_image_path`, `proc_api`, `thread_api`; `payload` for shell |
 
 Injection has no domain-specific status header codes; failures are core stage errors plus primitive `PROCESS_*` / `THREAD_*`.
 
@@ -840,6 +837,39 @@ snd_status_t snd_inj_apc_pe(snd_ldr_pe_ctx_t *ldr_ctx, snd_inj_ctx_t *inj_ctx);
 snd_status_t snd_inj_apc_coff(snd_ldr_coff_ctx_t *ldr_ctx, snd_inj_ctx_t *inj_ctx,
                               const char *entry_point, void *args, int arg_len);
 ```
+
+### Hijack
+
+`sindri/injection/hijack/engine.h`, `chain.h`
+
+Spawns the target suspended, stages the payload through the shared remote-write
+steps, then rewrites the suspended initial thread's context instead of creating
+or APC-queueing a thread. No `create_remote_thread` and no APC.
+
+| Function | Callback | Next stage |
+|---|---|---|
+| `snd_inj_hijack_create_target` | `create_process` (suspended) | `TARGET_ACQUIRED` |
+| (shared staging) | `snd_inj_classic_alloc_remote` / `write_payload` / `set_protections` | `PROTECTIONS_SET` |
+| `snd_inj_hijack_execute` | `thread_api->get_context` → rewrite frame → `write_remote` (return home) → `set_context` → `resume_thread` | `EXECUTED` |
+
+```c
+snd_status_t snd_inj_hijack_prepare_frame(const SND_THREAD_REGISTERS *live, PVOID entry,
+                                          ULONG_PTR arg1, ULONG_PTR arg2, SND_THREAD_REGISTERS *out);
+snd_status_t snd_inj_hijack_execute(snd_inj_ctx_t *ctx, PVOID return_thunk, ULONG_PTR arg1, ULONG_PTR arg2);
+
+snd_status_t snd_inj_hijack_shell(snd_inj_ctx_t *ctx, PVOID return_thunk);
+snd_status_t snd_inj_hijack_pe(snd_ldr_pe_ctx_t *ldr_ctx, snd_inj_ctx_t *inj_ctx, PVOID return_thunk);
+snd_status_t snd_inj_hijack_coff(snd_ldr_coff_ctx_t *ldr_ctx, snd_inj_ctx_t *inj_ctx, PVOID return_thunk,
+                                 const char *entry_point, void *args, int arg_len);
+```
+
+The entry frame is painted by `snd_inj_hijack_prepare_frame`: `ip := entry`,
+`sp` 16-byte aligned with a return slot, `rflags` masked, and — on x64 where
+arguments ride in registers — `cx := arg1`, `dx := arg2`. On x86 the technique
+returns `SND_STATUS_ARCH_MISMATCH` because entry arguments are marshalled on the
+stack there. `return_thunk` (e.g. `RtlExitUserThread`) is written to the target
+stack at the new `sp` so returning payloads terminate cleanly; `NULL` leaves the
+home unset (payload must not return).
 
 ---
 

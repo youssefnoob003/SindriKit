@@ -1,6 +1,16 @@
 # Thread Techniques
 
-The thread subdomain wraps the four operations SindriKit performs on an existing thread handle. It is deliberately small: creation and process-level handles belong to the [process subdomain](../process/internals.md), while this table exists so injection techniques can queue and resume without hardcoding `QueueUserAPC` or `NtQueueApcThread`.
+The thread subdomain wraps the operations SindriKit performs on an existing thread handle. It is deliberately small: creation and process-level handles belong to the [process subdomain](../process/internals.md), while this table exists so injection techniques can queue, resume, and rewrite threads without hardcoding `QueueUserAPC`, `NtQueueApcThread`, or `NtGetContextThread`.
+
+## Context access
+
+`get_context` / `set_context` exchange a portable `SND_THREAD_REGISTERS`
+projection (`ip/sp/cx/dx/rflags`) with the native `CONTEXT`. The projection is
+defined in `sindri/primitives/thread.h`, and the entry-frame ABI macros (argument
+placement, stack alignment, EFLAGS) live natively in the Hijack engine. The SDK-free NT/syscall backends
+map via `offsetof`/`sizeof` on a field-for-field WINNT mirror, and the Win32
+backend compiles compile-time parity asserts against the real `CONTEXT` so all
+three backends agree on offsets. The engine never touches a native context.
 
 ## Paradigm 1: Win32 (`snd_thread_win`)
 
@@ -9,6 +19,7 @@ The thread subdomain wraps the four operations SindriKit performs on an existing
 - **Queue APC:** `QueueUserAPC`
 - **Resume:** `ResumeThread`
 - **Suspend:** `SuspendThread`
+- **Context:** `GetThreadContext` / `SetThreadContext`
 - **Close:** `CloseHandle`
 
 ### OpSec implications
@@ -22,6 +33,8 @@ Every call routes through `kernel32` and hooked `ntdll` stubs. Suitable for diag
 - **Queue APC:** `NtQueueApcThread` (`SND_HASH_NTQUEUEAPCTHREAD`)
 - **Resume:** `NtResumeThread` (`SND_HASH_NTRESUMETHREAD`)
 - **Suspend:** `NtSuspendThread` (`SND_HASH_NTSUSPENDTHREAD`)
+- **Context:** `NtGetContextThread` / `NtSetContextThread`
+  (`SND_HASH_NTGETCONTEXTTHREAD` / `SND_HASH_NTSETCONTEXTTHREAD`)
 - **Close:** `NtClose` (`SND_HASH_NTCLOSE`)
 
 No `kernel32` involvement and no plaintext API strings, but calls still execute through in-process `ntdll` stubs where inline hooks may fire.
@@ -35,10 +48,22 @@ No `kernel32` involvement and no plaintext API strings, but calls still execute 
 
 ## APC integration
 
-The APC injection chain (`snd_inj_apc_*`) consumes this table after creating a suspended process through `proc_api->create_process`:
+The APC injection chain (`snd_inj_apc_*`) consumes this table after creating a suspended process through `snd_inj_apc_create_target`:
 
 1. `thread_api->queue_apc(target_thread, remote_entry_point, remote_arg)` — arms the APC.
 2. `thread_api->resume_thread(target_thread)` — resumes the suspended initial thread, triggering the APC.
+
+`snd_inj_cleanup` closes the thread handle via `close_handle`.
+
+## Hijack integration
+
+The hijack injection chain (`snd_inj_hijack_*`) consumes this table after
+creating a suspended process through `snd_inj_hijack_create_target`:
+
+1. `thread_api->get_context(initial_thread, &live)` — capture live `sp`/`rflags`.
+2. Paint the entry frame (engine, `SND_THREAD_REGISTERS`).
+3. `thread_api->set_context(initial_thread, &frame)` — rewrite `ip/sp/cx/dx/rflags`.
+4. `thread_api->resume_thread(initial_thread)` — suspend count 1→0, payload runs.
 
 `snd_inj_cleanup` closes the thread handle via `close_handle`.
 

@@ -11,8 +11,15 @@ snd_status_t snd_pe_get_reloc_block(const snd_pe_parser_t *parser, SIZE_T *curso
     *out_block         = NULL;
     *out_entries_count = 0;
 
-    SND_IMAGE_DATA_DIRECTORY reloc_dir = {0};
-    SND_TRY(snd_pe_get_directory(parser, SND_IMAGE_DIRECTORY_ENTRY_BASERELOC, &reloc_dir));
+    SND_IMAGE_DATA_DIRECTORY reloc_dir  = {0};
+    snd_status_t             dir_status = snd_pe_get_directory(parser, SND_IMAGE_DIRECTORY_ENTRY_BASERELOC, &reloc_dir);
+
+    if (SND_FAILED(dir_status)) {
+        if (dir_status.code == SND_STATUS_DIRECTORY_ENTRY_MISSING) {
+            return SND_OK;
+        }
+        return dir_status;
+    }
 
     if (reloc_dir.VirtualAddress == 0 || reloc_dir.Size == 0) {
         return SND_OK;

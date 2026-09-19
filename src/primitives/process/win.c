@@ -34,8 +34,8 @@ static snd_status_t WINAPI win_create_process(const snd_process_api_t *api, cons
     si.cb                  = sizeof(si);
     PROCESS_INFORMATION pi = {0};
 
-    BOOL ok = CreateProcessW(image_path, command_line ? cmd_buffer : NULL, NULL, NULL, FALSE, CREATE_SUSPENDED, NULL,
-                             NULL, &si, &pi);
+    BOOL ok = CreateProcessW(image_path, command_line ? cmd_buffer : NULL, NULL, NULL, FALSE,
+                             CREATE_SUSPENDED | CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
 
     if (!ok) {
         return SND_ERR_W32(SND_STATUS_PROCESS_CREATE_FAILED);

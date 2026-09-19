@@ -1,16 +1,6 @@
-/*
- * Host-side unit tests for the pure, CRT-friendly surface of SindriKit:
- * status encoding, bounds helpers, string helpers, hashing, and the
- * parser rejection paths. Build with SND_BUILD_UNIT_TESTS=ON and run
- * through ctest (Windows only).
- */
-
 #include "test_util.h"
 
-#include <sindri.h>
-
-int        g_test_failures = 0;
-static int g_freed         = 0;
+static int g_freed = 0;
 
 static void fake_free(snd_buffer_t *buf) {
     (void)buf;
@@ -31,6 +21,16 @@ static void test_status_encoding(void) {
     CHECK(err.code == SND_STATUS_NULL_POINTER);
 }
 
+static void test_status_strings(void) {
+    /* snd_status_to_string must never return NULL and must classify success
+     * and a couple of failure facilities without crashing. */
+    CHECK(snd_status_to_string(SND_OK) != NULL);
+    CHECK(snd_status_to_string(SND_ERR(SND_STATUS_NULL_POINTER)) != NULL);
+    CHECK(snd_status_to_string(SND_ERR(SND_STATUS_SSN_NOT_FOUND)) != NULL);
+    CHECK(snd_status_to_string(SND_ERR(SND_STATUS_HEADER_NT_SIGNATURE_INVALID)) != NULL);
+    CHECK(snd_status_to_string(SND_ERR(SND_STATUS_HEADER_MACHINE_UNSUPPORTED)) != NULL);
+}
+
 static void test_memory_bounds(void) {
     CHECK(snd_memory_bounds_check(16, 0, 16) == 1);
     CHECK(snd_memory_bounds_check(16, 16, 1) == 0);
@@ -47,10 +47,15 @@ static void test_memory_bounds(void) {
 }
 
 static void test_range_macros(void) {
-    CHECK(SND_RANGE_EXCEEDS(8, 8, 16) == 0);
-    CHECK(SND_RANGE_EXCEEDS(8, 9, 16) != 0);
-    CHECK(SND_IN_BOUNDS(15, 0, 16) != 0);
-    CHECK(SND_IN_BOUNDS(16, 0, 16) == 0);
+    SIZE_T total  = 16;
+    SIZE_T offset = 8;
+    SIZE_T length = 8;
+
+    CHECK(SND_RANGE_EXCEEDS(offset, length, total) == 0);
+    length = 9;
+    CHECK(SND_RANGE_EXCEEDS(offset, length, total) != 0);
+    CHECK(SND_IN_BOUNDS(15, 0, total) != 0);
+    CHECK(SND_IN_BOUNDS(total, 0, total) == 0);
 }
 
 static void test_string_helpers(void) {
@@ -84,6 +89,7 @@ static void test_buffer_lifecycle(void) {
     snd_buffer_t empty = {0};
     CHECK(snd_buffer_bounds_check(&empty, 0, 1) == 0);
 
+    g_freed = 0;
     snd_buffer_init(&buf, data, sizeof(data), fake_free);
     snd_buffer_free(&buf);
     CHECK(g_freed == 1);
@@ -104,33 +110,28 @@ static void test_parsers_reject_garbage(void) {
     CHECK(SND_FAILED(snd_coff_parse(&buf, &coff)));
 }
 
-int main(void) {
-    PROGRESS("begin");
-    PROGRESS("status encoding");
-    test_status_encoding();
-    PROGRESS("memory bounds");
-    test_memory_bounds();
-    PROGRESS("range macros");
-    test_range_macros();
-    PROGRESS("string helpers");
-    test_string_helpers();
-    PROGRESS("hash determinism");
-    test_hash_determinism();
-    PROGRESS("buffer lifecycle");
-    test_buffer_lifecycle();
-    PROGRESS("parsers reject garbage");
-    test_parsers_reject_garbage();
-    snd_run_guard_tests();
-    PROGRESS("guards complete");
+void snd_test_register_common(void) {
+    snd_test_register("common: status encoding", test_status_encoding);
+    snd_test_register("common: status strings", test_status_strings);
+    snd_test_register("common: memory bounds", test_memory_bounds);
+    snd_test_register("common: range macros", test_range_macros);
+    snd_test_register("common: string helpers", test_string_helpers);
+    snd_test_register("common: hash determinism", test_hash_determinism);
+    snd_test_register("common: buffer lifecycle", test_buffer_lifecycle);
+    snd_test_register("common: parsers reject garbage", test_parsers_reject_garbage);
+}
 
-    if (g_test_failures != 0) {
-        fprintf(stderr, "unit tests: %d failure(s)\n", g_test_failures);
-        fflush(stderr);
-        return 1;
-    }
+int main(int argc, char **argv) {
+    snd_test_register_common();
+    snd_test_register_guards();
+    snd_test_register_hijack();
+    snd_test_register_pe_parser();
+    snd_test_register_pe_exports();
+    snd_test_register_pe_imports();
+    snd_test_register_pe_relocs();
+    snd_test_register_coff_parser();
+    snd_test_register_coff_symbols();
+    snd_test_register_inject_chains();
 
-    printf("unit tests: all passed\n");
-    fflush(stdout);
-    PROGRESS("main returning");
-    return 0;
+    return snd_test_main(argc, argv);
 }

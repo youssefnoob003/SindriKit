@@ -45,7 +45,7 @@ build.bat pocs
 build64\pocs\Release\unified.exe load pe -f payload.dll -e Run --sys
 ```
 
-`unified` supports `load pe|coff`, `inject classic|apc` (shell, PE, COFF), and `hg`, each over `--win`/`--nt`/`--sys`. See [Examples & PoCs](docs/examples/README.md) and [Getting Started](docs/getting_started/README.md).
+`unified` supports `load pe|coff`, `inject classic|apc|hijack` (shell, PE, COFF), and `hg`, each over `--win`/`--nt`/`--sys`. See [Examples & PoCs](docs/examples/README.md) and [Getting Started](docs/getting_started/README.md).
 
 ---
 
@@ -235,10 +235,10 @@ Full reference under [`docs/`](docs/README.md):
 - **[Architecture](docs/architecture/README.md)** — dependency injection, state machines, facility-encoded status system
 - **[Primitives](docs/primitives/README.md)** — memory, modules, process, mapping, files, thread, syscalls, execution (FFI, Heaven's Gate)
 - **[Loaders](docs/loaders/README.md)** — reflective PE and COFF/BOF loading
-- **[Injection](docs/injection/README.md)** — classic and early-bird APC injection (shellcode, PE, COFF)
+- **[Injection](docs/injection/README.md)** — classic, early-bird APC, and thread-hijack injection (shellcode, PE, COFF)
 - **[Parsers](docs/parsers/README.md)** — PE, COFF, and env (PEB/NTDLL) parsing
 - **[Common](docs/common/README.md)** — CRT-free helpers, buffers, hashing, status
-- **[Examples & PoCs](docs/examples/README.md)** — the `unified` CLI (`load pe|coff`, `inject classic|apc`, `hg`)
+- **[Examples & PoCs](docs/examples/README.md)** — the `unified` CLI (`load pe|coff`, `inject classic|apc|hijack`, `hg`)
 - **[Tests](docs/tests/README.md)** — integration runners and the PE mutator
 
 *Planned: an **Evasion** domain.*

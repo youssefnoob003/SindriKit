@@ -21,8 +21,10 @@ flowchart TB
         PE["snd_inj_classic_pe"]
     end
 
-    subgraph future ["Future techniques"]
-        HIJ["Thread hijack …"]
+    subgraph hijack ["Hijack technique (implemented)"]
+        HIJ["snd_inj_hijack_* engine"]
+        HSH["snd_inj_hijack_shell"]
+        HPE["snd_inj_hijack_pe"]
     end
 
     subgraph apc ["APC technique (implemented)"]
@@ -37,12 +39,11 @@ flowchart TB
     CTX --> AENG
     AENG --> ASH
     AENG --> APE
-    CTX -.-> HIJ
-    PROC --> ENG
-    PROC --> AENG
+    CTX -.-> SHARED["create_suspended_target + classic staging"]
+    SHARED -.-> HIJ
 ```
 
-Future techniques will add their own engine headers (e.g. `injection/hijack/engine.h`) but continue to mutate the same `snd_inj_ctx_t`. Technique-specific metadata, if ever needed, lives in technique-local structures passed alongside the shared context — not in a forked injection context type.
+Future techniques will add their own engine headers (e.g. `injection/hollowing/engine.h`) but continue to mutate the same `snd_inj_ctx_t`. Technique-specific metadata, if ever needed, lives in technique-local structures passed alongside the shared context — not in a forked injection context type.
 
 ---
 
@@ -51,13 +52,13 @@ Future techniques will add their own engine headers (e.g. `injection/hijack/engi
 | Stage | Set by | Meaning |
 |---|---|---|
 | `SND_INJ_STAGE_UNINITIALIZED` | — | Context created, not started |
-| `SND_INJ_STAGE_TARGET_ACQUIRED` | `snd_inj_classic_open_target` / `snd_inj_apc_create_target` | Handle to target process / suspended process created |
+| `SND_INJ_STAGE_TARGET_ACQUIRED` | `snd_inj_classic_open_target` / `snd_inj_apc_create_target` / `snd_inj_hijack_create_target` | Handle to target process / suspended process created |
 | `SND_INJ_STAGE_MEMORY_ALLOCATED` | `snd_inj_classic_alloc_remote` / `snd_inj_apc_alloc_remote` | RW region reserved in remote process |
 | `SND_INJ_STAGE_PAYLOAD_WRITTEN` | `snd_inj_classic_write_payload` / `snd_inj_apc_write_payload` | Payload bytes copied remotely |
 | `SND_INJ_STAGE_PROTECTIONS_SET` | `snd_inj_classic_set_protections` / `snd_inj_apc_set_protections` | Remote region transitioned to RX |
-| `SND_INJ_STAGE_EXECUTED` | `snd_inj_classic_execute` / `snd_inj_apc_execute` | Remote thread created / APC queued and thread resumed |
+| `SND_INJ_STAGE_EXECUTED` | `snd_inj_classic_execute` / `snd_inj_apc_execute` / `snd_inj_hijack_execute` | Remote thread created / APC queued and thread resumed / initial thread resumed with rewritten context |
 
-Each engine function validates the current stage and returns `SND_STATUS_INVALID_STAGE` on mismatch. This ordering is enforced for all classic and APC paths and will be reused by future techniques that build on the same remote write/execute primitives.
+Each engine function validates the current stage and returns `SND_STATUS_INVALID_STAGE` on mismatch. This ordering is enforced for all classic, APC, and hijack paths and will be reused by future techniques that build on the same remote write/execute primitives.
 
 ---
 
@@ -230,13 +231,66 @@ snd_inj_cleanup(&inj_ctx);
 
 ---
 
+## Hijack Technique: Suspended-Process Context Rewrite (`snd_inj_hijack_*`)
+
+The hijack technique spawns a suspended target process and executes the payload
+by **rewriting the suspended initial thread's context** — no
+`CreateRemoteThread`/`NtCreateThreadEx` and no APC. It reuses the shared
+suspended-process target creation and the stabilized remote staging steps; only
+the execute stage is technique-native.
+
+### Pipeline
+
+1. **Create suspended target** — `snd_inj_apc_create_target` (for APC) or `snd_inj_hijack_create_target` (for Hijack):
+   `proc_api->create_process` returns a suspended initial thread in
+   `ctx->remote_thread`.
+2. **Allocate remote / write payload / protect** — the shared classic staging
+   steps (`snd_inj_classic_alloc_remote`, `write_payload`, `set_protections`).
+3. **Capture context** — `thread_api->get_context` reads the live `ip/sp/rflags`.
+4. **Paint entry frame** — `snd_inj_hijack_prepare_frame` sets `ip := entry`
+   (`remote_entry_point` else `remote_base`), aligns `sp` (16-byte boundary with
+   a return slot), masks `rflags`, and wires `cx := arg1`, `dx := arg2` — the
+   arch ABI policy comes from `internal/windows/context.h`. On x86 (stack
+   argument marshalling) it returns `SND_STATUS_ARCH_MISMATCH`.
+5. **Write return home** — if `return_thunk` is provided (e.g.
+   `RtlExitUserThread`), `proc_api->write_remote` writes it to the target stack
+   at the new `sp`; a returning payload `ret`s into it and exits cleanly.
+6. **Apply + resume** — `thread_api->set_context`, then `resume_thread`
+   (suspend count 1→0).
+
+### OpSec notes
+
+- No remote thread creation, no APC, no cross-process thread handle needed
+  beyond the initial thread from `create_process`.
+- `set_context` fetches the live native context first, then overwrites only the
+  projected registers (`ip/sp/cx/dx/rflags`) — control/segment state such as
+  `SegGs` (the TEB anchor) survives, so the resumed thread faults cleanly into
+  the payload instead of crashing on entry.
+- The payload entry frame is architecture-agnostic in the engine; all ABI
+  knowledge (argument placement, alignment, EFLAGS) is owned by
+  `internal/windows/context.h`.
+
+### Example (`pocs/src/cmd_inject_hijack.c`, invoked as `unified inject hijack`)
+
+```c
+snd_inj_ctx_t inj_ctx = {0};
+inj_ctx.target_image_path = target_image_path;
+inj_ctx.payload    = &shellcode_buf;
+inj_ctx.proc_api   = &snd_proc_nt;
+inj_ctx.thread_api = &snd_thread_nt;
+
+snd_status_t status = snd_inj_hijack_shell(&inj_ctx, return_thunk);
+snd_inj_cleanup(&inj_ctx);
+```
+
+---
+
 ## Planned Techniques
 
 Future injection techniques will reuse `snd_inj_ctx_t` and `proc_api`:
 
 | Technique | Description |
 |---|---|
-| **Thread hijack** | Suspend thread, rewrite context, resume |
 | **Process hollowing** | Replace remote image in situ (loader + injection coordination) |
 
 Each will add technique-specific engine headers under `include/sindri/injection/<technique>/` without forking the shared context type.

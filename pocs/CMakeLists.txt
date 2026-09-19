@@ -8,6 +8,7 @@ set(UNIFIED_SOURCES
     src/cmd_load_coff.c
     src/cmd_inject_classic.c
     src/cmd_inject_apc.c
+    src/cmd_inject_hijack.c
     src/cmd_hg.c
 )
 

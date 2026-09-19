@@ -14,9 +14,12 @@ include/sindri/injection/
 ├── classic/
 │   ├── engine.h        <- per-stage classic engine
 │   └── chain.h         <- snd_inj_classic_shell, snd_inj_classic_pe, snd_inj_classic_coff
-└── apc/
-    ├── engine.h        <- per-stage apc engine
-    └── chain.h         <- snd_inj_apc_shell, snd_inj_apc_pe, snd_inj_apc_coff
+├── apc/
+│   ├── engine.h        <- per-stage apc engine
+│   └── chain.h         <- snd_inj_apc_shell, snd_inj_apc_pe, snd_inj_apc_coff
+└── hijack/
+    ├── engine.h        <- frame preparation + hijack execute
+    └── chain.h         <- snd_inj_hijack_shell, snd_inj_hijack_pe, snd_inj_hijack_coff
 ```
 
 Loader contexts are **per-technique** (`snd_ldr_pe_ctx_t` today).
@@ -33,6 +36,9 @@ Loader contexts are **per-technique** (`snd_ldr_pe_ctx_t` today).
 | `sindri/injection/apc.h` | APC technique umbrella |
 | `sindri/injection/apc/engine.h` | Per-stage apc engine functions |
 | `sindri/injection/apc/chain.h` | `snd_inj_apc_shell`, `snd_inj_apc_pe`, `snd_inj_apc_coff` |
+| `sindri/injection/hijack.h` | Hijack technique umbrella |
+| `sindri/injection/hijack/engine.h` | Frame preparation + hijack execute |
+| `sindri/injection/hijack/chain.h` | `snd_inj_hijack_shell`, `snd_inj_hijack_pe`, `snd_inj_hijack_coff` |
 
 ## Implemented techniques
 
@@ -44,6 +50,9 @@ Loader contexts are **per-technique** (`snd_ldr_pe_ctx_t` today).
 | APC shellcode | `snd_inj_apc_shell` | Raw buffer in `inj_ctx.payload` |
 | APC PE | `snd_inj_apc_pe` | Local bake + remote APC execute (requires `snd_ldr_pe_ctx_t`) |
 | APC COFF | `snd_inj_apc_coff` | Local bake + remote APC execute (requires `snd_ldr_coff_ctx_t`) |
+| Hijack shellcode | `snd_inj_hijack_shell` | Raw buffer in `inj_ctx.payload` |
+| Hijack PE | `snd_inj_hijack_pe` | Local bake + context-hijack execute (requires `snd_ldr_pe_ctx_t`) |
+| Hijack COFF | `snd_inj_hijack_coff` | Local bake + context-hijack execute (requires `snd_ldr_coff_ctx_t`) |
 
 ## PoCs
 
@@ -51,6 +60,7 @@ Loader contexts are **per-technique** (`snd_ldr_pe_ctx_t` today).
 |---|---|---|
 | `pocs/src/cmd_inject_classic.c` | `snd_inj_classic_*` | `--win`, `--nt`, or `--sys` backend |
 | `pocs/src/cmd_inject_apc.c` | `snd_inj_apc_*` | Early-bird APC command |
+| `pocs/src/cmd_inject_hijack.c` | `snd_inj_hijack_*` | Thread-hijack command |
 
 ## Table of Contents
 

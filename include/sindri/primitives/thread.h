@@ -6,6 +6,17 @@
 #include <sindri/primitives/os_api.h>
 #include <sindri/status.h>
 
+/**
+ * @brief Portable 1:1 projection of a native thread context.
+ */
+struct snd_thread_registers {
+    ULONG_PTR ip;
+    ULONG_PTR sp;
+    ULONG_PTR cx;
+    ULONG_PTR dx;
+    DWORD     rflags;
+};
+
 SND_BEGIN_EXTERN_C
 
 // Expose globally available, ready-to-use WinAPI capabilities

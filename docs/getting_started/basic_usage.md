@@ -156,6 +156,7 @@ snd_inj_cleanup(&inj_ctx);
 | Direct/indirect syscalls | `load pe --sys`, `inject classic ... --sys` | `_sys` backend | NT module resolver | `_sys` backend | Required |
 | Shellcode injection | `inject classic shell ... --win` | — | — | `snd_proc_win` | None |
 | APC injection | `inject apc ...` | selected by command | selected by command | NT/thread primitives | Usually required |
+| Thread-hijack injection | `inject hijack ...` | selected by command | selected by command | NT/thread primitives | Usually required |
 | WoW64 x64 execution | `hg` | — | — | — | N/A |
 
 Full walkthroughs: [Examples](../examples/README.md).
