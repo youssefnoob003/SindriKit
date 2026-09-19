@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [2.2.1] - 2026-09-19
+
+Patch release fixing a Python runner regression that broke the integration runner self-tests in CI.
+
+### Fixed
+- **Integration Self-Tests**: Fixed a tuple unpacking mismatch in `selftest_common.py` caused by `evaluate_test` returning an extra field for custom pass messages, which crashed the `tests.yml` CI workflow.
+
 ## [2.2.0] - 2026-09-19
 
 Eighth major release. The framework introduces Thread Hijacking injection, deep parser unit testing, robust Python runner core architecture, and a new injection engine test suite.

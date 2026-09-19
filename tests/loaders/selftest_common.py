@@ -28,82 +28,82 @@ def tc(**kw):
 
 class EvaluateCleanExit(unittest.TestCase):
     def test_no_expectations_passes_on_zero(self):
-        ok, reason = evaluate_test(tc(), "stdout", "stderr", 0)
+        ok, reason, _ = evaluate_test(tc(), "stdout", "stderr", 0)
         self.assertTrue(ok, reason)
 
     def test_no_expectations_fails_on_nonzero(self):
-        ok, reason = evaluate_test(tc(), "stdout", "stderr", 3)
+        ok, reason, _ = evaluate_test(tc(), "stdout", "stderr", 3)
         self.assertFalse(ok, reason)
 
 
 class EvaluateOutput(unittest.TestCase):
     def test_found(self):
-        ok, reason = evaluate_test(tc(expect_output="all good"), "all good\n", "", 0)
+        ok, reason, _ = evaluate_test(tc(expect_output="all good"), "all good\n", "", 0)
         self.assertTrue(ok, reason)
 
     def test_missing(self):
-        ok, reason = evaluate_test(tc(expect_output="all good"), "other\n", "", 0)
+        ok, reason, _ = evaluate_test(tc(expect_output="all good"), "other\n", "", 0)
         self.assertFalse(ok)
         self.assertIn("all good", reason)
 
     def test_checked_across_stderr(self):
-        ok, reason = evaluate_test(tc(expect_output="msg"), "", "msg\n", 0)
+        ok, reason, _ = evaluate_test(tc(expect_output="msg"), "", "msg\n", 0)
         self.assertTrue(ok, reason)
 
     def test_no_cross_stream_concat_false_positive(self):
         # stdout "foo" + separator + stderr "bar" must not match "foobar"
-        ok, reason = evaluate_test(tc(expect_output="foobar"), "foo", "bar", 0)
+        ok, reason, _ = evaluate_test(tc(expect_output="foobar"), "foo", "bar", 0)
         self.assertFalse(ok)
 
 
 class EvaluateReturncode(unittest.TestCase):
     def test_exact_match(self):
-        ok, reason = evaluate_test(tc(expect_returncode=122), "", "", 122)
+        ok, reason, _ = evaluate_test(tc(expect_returncode=122), "", "", 122)
         self.assertTrue(ok, reason)
 
     def test_mismatch(self):
-        ok, reason = evaluate_test(tc(expect_returncode=122), "", "", 0)
+        ok, reason, _ = evaluate_test(tc(expect_returncode=122), "", "", 0)
         self.assertFalse(ok)
 
 
 class EvaluateExpectedFail(unittest.TestCase):
     def test_fail_matches_nonzero(self):
-        ok, reason = evaluate_test(tc(expect_fail=True), "", "", 1)
+        ok, reason, _ = evaluate_test(tc(expect_fail=True), "", "", 1)
         self.assertTrue(ok, reason)
 
     def test_fail_does_not_match_zero(self):
-        ok, reason = evaluate_test(tc(expect_fail=True), "", "", 0)
+        ok, reason, _ = evaluate_test(tc(expect_fail=True), "", "", 0)
         self.assertFalse(ok)
 
 
 class EvaluateReject(unittest.TestCase):
     def test_rejection_marker_with_nonzero_passes(self):
-        ok, reason = evaluate_test(tc(expect_reject=REJECT_MARKER), "", f"{REJECT_MARKER} bad image\n", 1)
+        ok, reason, _ = evaluate_test(tc(expect_reject=REJECT_MARKER), "", f"{REJECT_MARKER} bad image\n", 1)
         self.assertTrue(ok, reason)
 
     def test_marker_missing_fails(self):
-        ok, reason = evaluate_test(tc(expect_reject=REJECT_MARKER), "", "no marker\n", 1)
+        ok, reason, _ = evaluate_test(tc(expect_reject=REJECT_MARKER), "", "no marker\n", 1)
         self.assertFalse(ok)
         self.assertIn("rejection marker", reason)
 
     def test_marker_with_zero_exit_is_a_failure(self):
-        ok, reason = evaluate_test(tc(expect_reject=REJECT_MARKER), f"{REJECT_MARKER} ??", "", 0)
+        ok, reason, _ = evaluate_test(tc(expect_reject=REJECT_MARKER), f"{REJECT_MARKER} ??", "", 0)
         self.assertFalse(ok)
 
     def test_crash_is_not_an_acceptable_rejection(self):
-        ok, reason = evaluate_test(tc(expect_reject=REJECT_MARKER), "", "", 3221225477)
+        ok, reason, _ = evaluate_test(tc(expect_reject=REJECT_MARKER), "", "", 3221225477)
         self.assertFalse(ok)
 
 
 class EvaluateFuzz(unittest.TestCase):
     def test_crash_fails(self):
-        ok, reason = evaluate_test(tc(corkami_fuzz=True), "", "", 3221225477)
+        ok, reason, _ = evaluate_test(tc(corkami_fuzz=True), "", "", 3221225477)
         self.assertFalse(ok)
 
     def test_non_crash_passes(self):
-        ok, reason = evaluate_test(tc(corkami_fuzz=True), "", "no output", 0)
+        ok, reason, _ = evaluate_test(tc(corkami_fuzz=True), "", "no output", 0)
         self.assertTrue(ok, reason)
-        ok, reason = evaluate_test(tc(corkami_fuzz=True), "", f"{REJECT_MARKER} rejected", 1)
+        ok, reason, _ = evaluate_test(tc(corkami_fuzz=True), "", f"{REJECT_MARKER} rejected", 1)
         self.assertTrue(ok, reason)
 
 
