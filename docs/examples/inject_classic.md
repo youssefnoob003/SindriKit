@@ -41,6 +41,8 @@ Injects into an existing process. Each mode runs the same **Open → Alloc → W
 | `--nt` | `snd_mem_nt` | `snd_mod_nt` | `snd_proc_nt` | `snd_file_nt` | None |
 | `--sys` | `snd_mem_sys` | `snd_mod_nt` | `snd_proc_sys` | `snd_file_sys` | KnownDlls clean `ntdll` + `apply_syscall_style` |
 
+Classic injection creates remote threads via `proc_api->create_remote_thread`. The dedicated `thread_api` tables (`snd_thread_*`) are only used by the APC and hijack chains, documented in [inject_apc.md](inject_apc.md).
+
 `--nt`/`--sys` require an absolute payload path. Default backend is `--nt`; default syscall invoker is indirect.
 
 ## Walkthrough
@@ -139,6 +141,6 @@ The injection stage is tracked in `snd_inj_ctx_t.stage`; on failure the command 
 ## See also
 
 - [Injection internals](../injection/internals.md)
-- [inject_apc.md](inject_apc.md) — early-bird variant that spawns its own target
+- [inject_apc.md](inject_apc.md) — early-bird variant that spawns its own target and uses the thread API for APC queueing
 - [load_pe.md](load_pe.md) — the local reflective pipeline in isolation
 - [cli.md](cli.md) — backend and syscall strategy reference

@@ -1,21 +1,29 @@
 # Injection Domain
 
-Remote process injection: open target, allocate remote memory, write payload, set protections, create a remote thread. Cross-process operations route through an injected `snd_process_api_t` table.
+Remote process injection with three execution techniques: classic remote-thread
+execution, early-bird APC execution, and suspended-thread context hijacking.
+Target, staging, and cross-process operations route through injected capability
+tables.
 
 ## Shared context vs loader contexts
 
-Unlike loaders, **all injection techniques share** `snd_inj_ctx_t` (`sindri/injection/context.h`). Stage machine, handles, remote fields, and `proc_api` are identical across classic and APC techniques.
+Unlike loaders, **all injection techniques share** `snd_inj_ctx_t` (`sindri/injection/common/context.h`). Stage machine, handles, remote fields, and injected API tables are shared across classic, APC, and hijack techniques.
 
 Each technique adds engine functions and chains under a subdirectory but mutates the same context:
 
 ```
 include/sindri/injection/
-├── context.h           <- shared across ALL techniques
+├── common/
+│   ├── context.h       <- shared context and stages
+│   ├── cleanup.h       <- best-effort handle/process cleanup
+│   ├── target.h        <- open/create targets
+│   ├── staging.h       <- remote alloc/write/protect
+│   └── prepare.h       <- shared PE/COFF preparation
 ├── classic/
-│   ├── engine.h        <- per-stage classic engine
+│   ├── engine.h        <- classic execution engine
 │   └── chain.h         <- snd_inj_classic_shell, snd_inj_classic_pe, snd_inj_classic_coff
 ├── apc/
-│   ├── engine.h        <- per-stage apc engine
+│   ├── engine.h        <- APC execution engine
 │   └── chain.h         <- snd_inj_apc_shell, snd_inj_apc_pe, snd_inj_apc_coff
 └── hijack/
     ├── engine.h        <- frame preparation + hijack execute
@@ -29,12 +37,16 @@ Loader contexts are **per-technique** (`snd_ldr_pe_ctx_t` today).
 | Header | Role |
 |---|---|
 | `sindri/injection.h` | Umbrella include |
-| `sindri/injection/context.h` | `snd_inj_ctx_t`, stages, `snd_inj_cleanup` |
+| `sindri/injection/common/context.h` | `snd_inj_ctx_t`, stages |
+| `sindri/injection/common/cleanup.h` | `snd_inj_cleanup` |
+| `sindri/injection/common/target.h` | Target acquisition operations |
+| `sindri/injection/common/staging.h` | Remote allocation, write, and protection operations |
+| `sindri/injection/common/prepare.h` | Shared PE/COFF preparation |
 | `sindri/injection/classic.h` | Classic technique umbrella |
-| `sindri/injection/classic/engine.h` | Per-stage engine functions |
+| `sindri/injection/classic/engine.h` | Classic execution |
 | `sindri/injection/classic/chain.h` | `snd_inj_classic_shell`, `snd_inj_classic_pe`, `snd_inj_classic_coff` |
 | `sindri/injection/apc.h` | APC technique umbrella |
-| `sindri/injection/apc/engine.h` | Per-stage apc engine functions |
+| `sindri/injection/apc/engine.h` | APC execution |
 | `sindri/injection/apc/chain.h` | `snd_inj_apc_shell`, `snd_inj_apc_pe`, `snd_inj_apc_coff` |
 | `sindri/injection/hijack.h` | Hijack technique umbrella |
 | `sindri/injection/hijack/engine.h` | Frame preparation + hijack execute |

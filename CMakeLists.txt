@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(SindriKit VERSION 2.2.1 LANGUAGES C ASM_MASM)
+project(SindriKit VERSION 2.3.0 LANGUAGES C ASM_MASM)
 
 message(STATUS "SindriKit ${PROJECT_VERSION}")
 
@@ -174,8 +174,14 @@ add_library(sindri_engine STATIC
     ${SND_SRC_DIR}/loaders/coff/chain.c
     ${SND_SRC_DIR}/loaders/coff/status.c
 
+    # Injection common
+    ${SND_SRC_DIR}/injection/common/context.c
+    ${SND_SRC_DIR}/injection/common/cleanup.c
+    ${SND_SRC_DIR}/injection/common/target.c
+    ${SND_SRC_DIR}/injection/common/staging.c
+    ${SND_SRC_DIR}/injection/common/prepare.c
+
     # Injection domain
-    ${SND_SRC_DIR}/injection/context.c
     ${SND_SRC_DIR}/injection/classic/engine.c
     ${SND_SRC_DIR}/injection/classic/chain.c
     ${SND_SRC_DIR}/injection/apc/engine.c

@@ -1,5 +1,4 @@
 #include <sindri/common/debug.h>
-#include <sindri/injection/status.h>
 #include <sindri/loaders/coff/status.h>
 #include <sindri/loaders/pe/status.h>
 #include <sindri/parsers/coff/status.h>

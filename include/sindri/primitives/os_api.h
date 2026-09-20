@@ -41,12 +41,15 @@ typedef snd_status_t(WINAPI *snd_process_create_cb)(const snd_process_api_t *api
 typedef snd_status_t(WINAPI *snd_process_open_cb)(DWORD pid, DWORD desired_access, HANDLE *out_process);
 typedef snd_status_t(WINAPI *snd_process_alloc_remote_cb)(HANDLE process, SIZE_T size, DWORD allocation_type,
                                                           DWORD protect, PVOID *out_address);
+typedef snd_status_t(WINAPI *snd_process_free_remote_cb)(HANDLE process, PVOID base_address, SIZE_T size,
+                                                         DWORD free_type);
 typedef snd_status_t(WINAPI *snd_process_write_remote_cb)(HANDLE process, PVOID base_address, const void *buffer,
                                                           SIZE_T size, SIZE_T *bytes_written);
 typedef snd_status_t(WINAPI *snd_process_protect_remote_cb)(HANDLE process, PVOID base_address, SIZE_T size,
                                                             DWORD new_protect, DWORD *old_protect);
 typedef snd_status_t(WINAPI *snd_process_create_thread_cb)(HANDLE process, PVOID start_address, PVOID parameter,
                                                            HANDLE *out_thread);
+typedef snd_status_t(WINAPI *snd_process_terminate_cb)(HANDLE process, UINT exit_code);
 typedef snd_status_t(WINAPI *snd_process_close_cb)(HANDLE handle);
 
 // Thread Capabilities
@@ -54,10 +57,10 @@ typedef struct snd_thread_registers SND_THREAD_REGISTERS; // Forward declaration
 
 typedef snd_status_t(WINAPI *snd_thread_queue_apc_cb)(HANDLE thread, PVOID apc_routine, PVOID apc_argument);
 typedef snd_status_t(WINAPI *snd_thread_resume_cb)(HANDLE thread);
-typedef snd_thread_resume_cb snd_thread_suspend_cb;
+typedef snd_status_t(WINAPI *snd_thread_suspend_cb)(HANDLE thread);
 typedef snd_status_t(WINAPI *snd_thread_get_context_cb)(HANDLE thread, SND_THREAD_REGISTERS *out_regs);
 typedef snd_status_t(WINAPI *snd_thread_set_context_cb)(HANDLE thread, const SND_THREAD_REGISTERS *in_regs);
-typedef snd_process_close_cb snd_thread_close_cb;
+typedef snd_status_t(WINAPI *snd_thread_close_cb)(HANDLE handle);
 
 /**
  * @brief Local Memory Management API table.
@@ -107,9 +110,11 @@ struct snd_process_api {
     snd_process_create_cb         create_process;
     snd_process_open_cb           open_process;
     snd_process_alloc_remote_cb   alloc_remote;
+    snd_process_free_remote_cb    free_remote;
     snd_process_write_remote_cb   write_remote;
     snd_process_protect_remote_cb protect_remote;
     snd_process_create_thread_cb  create_remote_thread;
+    snd_process_terminate_cb      terminate_process;
     snd_process_close_cb          close_handle;
 };
 SND_SHUFFLE_END

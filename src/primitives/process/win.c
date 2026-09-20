@@ -99,6 +99,17 @@ static snd_status_t WINAPI win_create_remote_thread(HANDLE process, PVOID start_
     return *out_thread ? SND_OK : SND_ERR_W32(SND_STATUS_THREAD_REMOTE_CREATE_FAILED);
 }
 
+static snd_status_t WINAPI win_free_remote(HANDLE process, PVOID base_address, SIZE_T size, DWORD free_type) {
+    SND_CHECK_NULL(process, base_address);
+    return VirtualFreeEx(process, base_address, size, free_type) ? SND_OK
+                                                                 : SND_ERR_W32(SND_STATUS_PROCESS_REMOTE_FREE_FAILED);
+}
+
+static snd_status_t WINAPI win_terminate_process(HANDLE process, UINT exit_code) {
+    SND_CHECK_NULL(process);
+    return TerminateProcess(process, exit_code) ? SND_OK : SND_ERR_W32(SND_STATUS_PROCESS_TERMINATE_FAILED);
+}
+
 static snd_status_t WINAPI win_close_handle(HANDLE handle) {
     if (!handle || handle == INVALID_HANDLE_VALUE) {
         return SND_OK;
@@ -112,7 +123,9 @@ const snd_process_api_t snd_proc_win = {.create_process_params = win_create_proc
                                         .create_process        = win_create_process,
                                         .open_process          = win_open_process,
                                         .alloc_remote          = win_alloc_remote,
+                                        .free_remote           = win_free_remote,
                                         .write_remote          = win_write_remote,
                                         .protect_remote        = win_protect_remote,
                                         .create_remote_thread  = win_create_remote_thread,
+                                        .terminate_process     = win_terminate_process,
                                         .close_handle          = win_close_handle};

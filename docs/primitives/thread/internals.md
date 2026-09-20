@@ -48,7 +48,7 @@ No `kernel32` involvement and no plaintext API strings, but calls still execute 
 
 ## APC integration
 
-The APC injection chain (`snd_inj_apc_*`) consumes this table after creating a suspended process through `snd_inj_apc_create_target`:
+The APC injection chain (`snd_inj_apc_*`) consumes this table after creating a suspended process through `snd_inj_create_suspended_target`:
 
 1. `thread_api->queue_apc(target_thread, remote_entry_point, remote_arg)` — arms the APC.
 2. `thread_api->resume_thread(target_thread)` — resumes the suspended initial thread, triggering the APC.
@@ -58,7 +58,7 @@ The APC injection chain (`snd_inj_apc_*`) consumes this table after creating a s
 ## Hijack integration
 
 The hijack injection chain (`snd_inj_hijack_*`) consumes this table after
-creating a suspended process through `snd_inj_hijack_create_target`:
+creating a suspended process through `snd_inj_create_suspended_target`:
 
 1. `thread_api->get_context(initial_thread, &live)` — capture live `sp`/`rflags`.
 2. Paint the entry frame (engine, `SND_THREAD_REGISTERS`).

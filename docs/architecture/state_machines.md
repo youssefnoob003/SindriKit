@@ -21,7 +21,7 @@ Every major domain context contains:
 
 | | Loaders | Injection |
 |---|---|---|
-| Context | **Per technique** — `snd_ldr_pe_ctx_t`, `snd_ldr_coff_ctx_t` | **Shared** — `snd_inj_ctx_t` for classic and APC techniques |
+| Context | **Per technique** — `snd_ldr_pe_ctx_t`, `snd_ldr_coff_ctx_t` | **Shared** — `snd_inj_ctx_t` for classic, APC, and hijack techniques |
 | Rationale | Different loader techniques may need incompatible fields | Remote open/write/execute primitives are technique-agnostic |
 
 Future loader techniques add new context types (e.g. `snd_ldr_xyz_ctx_t`). Future injection techniques reuse `snd_inj_ctx_t` and add technique-specific engine headers.
@@ -107,7 +107,7 @@ Optional post-load export calls in PoCs use `snd_ldr_pe_get_proc_address` + `snd
 
 ## Classic injection (`snd_inj_ctx_t`)
 
-**Header:** `include/sindri/injection/context.h`  
+**Header:** `include/sindri/injection/common/context.h`
 **Engine:** `include/sindri/injection/classic/engine.h`  
 **Chains:** `include/sindri/injection/classic/chain.h`
 
@@ -116,11 +116,12 @@ Optional post-load export calls in PoCs use `snd_ldr_pe_get_proc_address` + `snd
 | Stage | Set by | Meaning |
 |---|---|---|
 | `SND_INJ_STAGE_UNINITIALIZED` | Zero-init | No target opened |
-| `SND_INJ_STAGE_TARGET_ACQUIRED` | `snd_inj_classic_open_target` | `target_process` handle valid |
-| `SND_INJ_STAGE_MEMORY_ALLOCATED` | `snd_inj_classic_alloc_remote` | `remote_base` allocated |
-| `SND_INJ_STAGE_PAYLOAD_WRITTEN` | `snd_inj_classic_write_payload` | Bytes copied to target |
-| `SND_INJ_STAGE_PROTECTIONS_SET` | `snd_inj_classic_set_protections` | Typically `PAGE_EXECUTE_READ` |
-| `SND_INJ_STAGE_EXECUTED` | `snd_inj_classic_execute` | Remote thread created |
+| `SND_INJ_STAGE_TARGET_ACQUIRED` | `snd_inj_open_target` / `snd_inj_create_suspended_target` | `target_process` handle valid |
+| `SND_INJ_STAGE_MEMORY_ALLOCATED` | `snd_inj_alloc_remote` / `snd_inj_alloc_remote_size` | `remote_base` allocated |
+| `SND_INJ_STAGE_PAYLOAD_WRITTEN` | `snd_inj_write_payload` | Bytes copied to target |
+| `SND_INJ_STAGE_PROTECTIONS_SET` | `snd_inj_set_protections` | Typically `PAGE_EXECUTE_READ` |
+| `SND_INJ_STAGE_CONTEXT_APPLIED` | `snd_inj_hijack_execute` | Thread context changed; resume is pending |
+| `SND_INJ_STAGE_EXECUTED` | `snd_inj_classic_execute` / `snd_inj_apc_execute` / `snd_inj_hijack_execute` | Execution was handed off |
 
 Debug builds expose human-readable stage names via `snd_inj_stage_to_string()`.
 

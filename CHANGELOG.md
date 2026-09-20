@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [2.3.0] - 2026-09-20
+
+Ninth major release. Injection now uses shared target/staging engines, with
+expanded thread-hijacking support and best-effort remote cleanup.
+
+### Breaking Changes
+- Reorganized injection headers under `sindri/injection/common/`.
+- Consolidated target/staging APIs under shared `snd_inj_*` operations.
+- Hijack chains now use `snd_inj_ctx_t.return_policy` instead of a raw
+  return-thunk parameter.
+
+### Major Additions
+- x86 stack-based hijack entry frames alongside x64 register-based frames.
+- `SND_INJ_RETURN_NONE` and `SND_INJ_RETURN_GRACEFUL` return policies.
+- Optional `free_remote` and `terminate_process` process capabilities.
+- Expanded unit and integration coverage for classic, APC, and hijack paths.
+
+### Fixed
+- Failed pre-execution operations now attempt remote-memory cleanup when
+  supported by the backend.
+- Cleanup correctly handles suspended-thread handles, target ownership, and
+  temporary PE/COFF payload metadata.
+- Integration teardown waits for marker files and terminates target children.
+
+---
+
 ## [2.2.1] - 2026-09-19
 
 Patch release fixing a Python runner regression that broke the integration runner self-tests in CI.

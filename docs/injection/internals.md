@@ -52,10 +52,11 @@ Future techniques will add their own engine headers (e.g. `injection/hollowing/e
 | Stage | Set by | Meaning |
 |---|---|---|
 | `SND_INJ_STAGE_UNINITIALIZED` | — | Context created, not started |
-| `SND_INJ_STAGE_TARGET_ACQUIRED` | `snd_inj_classic_open_target` / `snd_inj_apc_create_target` / `snd_inj_hijack_create_target` | Handle to target process / suspended process created |
-| `SND_INJ_STAGE_MEMORY_ALLOCATED` | `snd_inj_classic_alloc_remote` / `snd_inj_apc_alloc_remote` | RW region reserved in remote process |
-| `SND_INJ_STAGE_PAYLOAD_WRITTEN` | `snd_inj_classic_write_payload` / `snd_inj_apc_write_payload` | Payload bytes copied remotely |
-| `SND_INJ_STAGE_PROTECTIONS_SET` | `snd_inj_classic_set_protections` / `snd_inj_apc_set_protections` | Remote region transitioned to RX |
+| `SND_INJ_STAGE_TARGET_ACQUIRED` | `snd_inj_open_target` / `snd_inj_create_suspended_target` | Handle to target process / suspended process created |
+| `SND_INJ_STAGE_MEMORY_ALLOCATED` | `snd_inj_alloc_remote` / `snd_inj_alloc_remote_size` | RW region reserved in remote process |
+| `SND_INJ_STAGE_PAYLOAD_WRITTEN` | `snd_inj_write_payload` | Payload bytes copied remotely |
+| `SND_INJ_STAGE_PROTECTIONS_SET` | `snd_inj_set_protections` | Remote region transitioned to RX |
+| `SND_INJ_STAGE_CONTEXT_APPLIED` | `snd_inj_hijack_execute` | Thread context rewritten; resume is still pending |
 | `SND_INJ_STAGE_EXECUTED` | `snd_inj_classic_execute` / `snd_inj_apc_execute` / `snd_inj_hijack_execute` | Remote thread created / APC queued and thread resumed / initial thread resumed with rewritten context |
 
 Each engine function validates the current stage and returns `SND_STATUS_INVALID_STAGE` on mismatch. This ordering is enforced for all classic, APC, and hijack paths and will be reused by future techniques that build on the same remote write/execute primitives.
@@ -110,13 +111,13 @@ The PE chain deliberately interleaves loader and injection stages so relocations
 | 2 | Loader | Inline `SND_IS_ARCH_COMPATIBLE` guard in `snd_ldr_pe_prepare_image` (`SND_STATUS_ARCH_MISMATCH` on mismatch) |
 | 3 | Loader | `snd_ldr_pe_allocate_and_copy_image` — local RW mapping |
 | 4 | Injection | `inj_ctx->payload` <- local mapped buffer (`local_base`, `allocated_size`) |
-| 5 | Injection | `snd_inj_classic_open_target` |
-| 6 | Injection | `snd_inj_classic_alloc_remote` — remote RW region sized to `allocated_size` |
+| 5 | Injection | `snd_inj_open_target` |
+| 6 | Injection | `snd_inj_alloc_remote` — remote RW region sized to `allocated_size` |
 | 7 | Loader | `ldr_ctx->target.execution_base = inj_ctx->remote_base` |
 | 8 | Loader | `snd_ldr_pe_apply_relocations` — delta = remote_base − ImageBase |
 | 9 | Loader | `snd_ldr_pe_resolve_imports` — IAT patched locally |
-| 10 | Injection | `snd_inj_classic_write_payload` — writes baked image to remote |
-| 11 | Injection | `snd_inj_classic_set_protections` — flat `PAGE_EXECUTE_READ` on remote region |
+| 10 | Injection | `snd_inj_write_payload` — writes baked image to remote |
+| 11 | Injection | `snd_inj_set_protections` — flat `PAGE_EXECUTE_READ` on remote region |
 | 12 | Injection | `remote_entry_point = remote_base + ep_rva`; `snd_inj_classic_execute` |
 
 **Key behaviors:**
@@ -159,14 +160,14 @@ The COFF chain relies on allocating a remote buffer that is large enough to hold
 |---|---|---|
 | 1 | Loader | `snd_coff_parse` → `SND_COFF_STAGE_PARSED` |
 | 2 | Loader | `snd_ldr_coff_allocate_and_copy_sections` — local mapping |
-| 3 | Injection | `snd_inj_classic_open_target` |
-| 4 | Injection | `snd_inj_classic_alloc_remote` — remote RW sized to `allocated_size + arg_len` |
+| 3 | Injection | `snd_inj_open_target` |
+| 4 | Injection | `snd_inj_alloc_remote_size` — remote RW sized to `allocated_size + arg_len` |
 | 5 | Loader | `ldr_ctx->target.execution_base = inj_ctx->remote_base` |
 | 6 | Loader | `snd_ldr_coff_resolve_symbols` |
 | 7 | Loader | `snd_ldr_coff_apply_relocations` |
-| 8 | Injection | `snd_inj_classic_write_payload` — writes baked image to remote |
+| 8 | Injection | `snd_inj_write_payload` — writes baked image to remote |
 | 9 | Injection | Optional: write BOF arguments buffer to `remote_base + allocated_size` |
-| 10 | Injection | `snd_inj_classic_set_protections` — flat `PAGE_EXECUTE_READ` |
+| 10 | Injection | `snd_inj_set_protections` — flat `PAGE_EXECUTE_READ` |
 | 11 | Injection | Find entry point offset, calculate `remote_entry_point`, and `snd_inj_classic_execute` |
 
 **Key behaviors:**
@@ -195,7 +196,12 @@ snd_inj_cleanup(&inj_ctx);
 
 ## Cleanup
 
-`snd_inj_cleanup` closes `remote_thread` and `target_process` via `proc_api->close_handle`, clears remote fields, and resets stage to `UNINITIALIZED`. It does not free the local loader mapping — callers manage `snd_ldr_pe_free_mapped_image` separately if a local `snd_ldr_pe_ctx_t` or `snd_ldr_coff_ctx_t` was used.
+`snd_inj_cleanup` is best effort. It terminates created targets that have not
+reached execution, closes the thread handle through `thread_api` when available,
+releases pre-execution remote memory when `proc_api->free_remote` is available,
+closes the process handle, clears remote fields, and resets stage to
+`UNINITIALIZED`. It does not free the local loader mapping; callers manage
+`snd_ldr_pe_free_mapped_image` or `snd_ldr_coff_free_mapped_image` separately.
 
 ---
 
@@ -205,7 +211,7 @@ The APC technique queues an APC to an alertable thread. It is implemented via th
 
 ### Pipeline
 
-1. **Open target** — `proc_api->create_process(target_image_path, NULL, &target_process, &remote_thread)`
+1. **Create suspended target** — `proc_api->create_process(target_image_path, NULL, &target_process, &remote_thread)`
 2. **Allocate remote** — remote RW region
 3. **Write payload** — `proc_api->write_remote` copies the payload
 4. **Protect** — `PAGE_EXECUTE_READ` over the entire allocation
@@ -241,20 +247,23 @@ the execute stage is technique-native.
 
 ### Pipeline
 
-1. **Create suspended target** — `snd_inj_apc_create_target` (for APC) or `snd_inj_hijack_create_target` (for Hijack):
+1. **Create suspended target** — `snd_inj_create_suspended_target`:
    `proc_api->create_process` returns a suspended initial thread in
    `ctx->remote_thread`.
 2. **Allocate remote / write payload / protect** — the shared classic staging
-   steps (`snd_inj_classic_alloc_remote`, `write_payload`, `set_protections`).
+   steps (`snd_inj_alloc_remote`, `snd_inj_write_payload`, `snd_inj_set_protections`).
 3. **Capture context** — `thread_api->get_context` reads the live `ip/sp/rflags`.
 4. **Paint entry frame** — `snd_inj_hijack_prepare_frame` sets `ip := entry`
-   (`remote_entry_point` else `remote_base`), aligns `sp` (16-byte boundary with
-   a return slot), masks `rflags`, and wires `cx := arg1`, `dx := arg2` — the
-   arch ABI policy comes from `internal/windows/context.h`. On x86 (stack
-   argument marshalling) it returns `SND_STATUS_ARCH_MISMATCH`.
-5. **Write return home** — if `return_thunk` is provided (e.g.
-   `RtlExitUserThread`), `proc_api->write_remote` writes it to the target stack
-   at the new `sp`; a returning payload `ret`s into it and exits cleanly.
+   (`remote_entry_point` else `remote_base`), aligns `sp`, masks `rflags`, and
+   wires arguments according to the architecture ABI. x64 uses `RCX/RDX`;
+   x86 reserves a remote stack frame for the return address and arguments.
+5. **Write entry frame** — x64 writes the return thunk only when one is
+   selected by the return policy; x86 writes `[return_thunk, arg1, arg2]` only when a thunk or an
+   argument is present. When the frame has no content the remote write is
+   skipped, so `write_remote` is best-effort and only required when data must be
+   written. `SND_INJ_RETURN_NONE` means the payload must not return;
+   `SND_INJ_RETURN_GRACEFUL` makes the engine resolve a target-compatible
+   thread-exit address.
 6. **Apply + resume** — `thread_api->set_context`, then `resume_thread`
    (suspend count 1→0).
 
@@ -278,8 +287,9 @@ inj_ctx.target_image_path = target_image_path;
 inj_ctx.payload    = &shellcode_buf;
 inj_ctx.proc_api   = &snd_proc_nt;
 inj_ctx.thread_api = &snd_thread_nt;
+inj_ctx.return_policy = SND_INJ_RETURN_GRACEFUL;
 
-snd_status_t status = snd_inj_hijack_shell(&inj_ctx, return_thunk);
+snd_status_t status = snd_inj_hijack_shell(&inj_ctx);
 snd_inj_cleanup(&inj_ctx);
 ```
 

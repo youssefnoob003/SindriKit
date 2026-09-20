@@ -67,7 +67,9 @@ The injection engine progresses through discrete stages (`SND_INJ_STAGE_*`), cal
 3. `write_remote` — copy the prepared payload
 4. `protect_remote` — set final page protections (e.g. `PAGE_EXECUTE_READ`)
 5. `create_remote_thread` — execute the entry point
-6. `close_handle` — release process and thread handles via `snd_inj_cleanup`
+6. `free_remote` — best-effort release of pre-execution remote allocations
+7. `terminate_process` — abort a target created by APC/hijack cleanup when needed
+8. `close_handle` — release process and thread handles via `snd_inj_cleanup`
 
 A typical full-stealth profile (`unified inject classic ... --sys`):
 

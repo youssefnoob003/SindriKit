@@ -2,96 +2,75 @@
 #define SND_INJECTION_HIJACK_ENGINE_H
 
 #include <sindri/common/macros.h>
-#include <sindri/injection/context.h>
+#include <sindri/injection/common/context.h>
 #include <sindri/internal/windows/context.h>
 #include <sindri/status.h>
 
 SND_BEGIN_EXTERN_C
 
-/**
- * @brief Creates a target process in a suspended state for hijack injection.
- *
- * The returned initial thread handle (in @p ctx::remote_thread) is what hijack
- * rewrites.
- *
- * @param ctx Initialized injection context with target_image_path and proc_api set.
- * @retval SND_OK On success.
- * @retval SND_STATUS_NULL_POINTER If @p ctx, the process API, or its
- * `create_process` callback is NULL.
- * @retval SND_STATUS_INVALID_STAGE If the injection stage is not
- * `SND_INJ_STAGE_UNINITIALIZED`.
- * @retval SND_STATUS_CORRUPTED_STAGE If `target_image_path` is not set.
- * @retval Any error returned by `snd_process_api_t::create_process`.
- */
-snd_status_t snd_inj_hijack_create_target(snd_inj_ctx_t *ctx);
+/** Number of machine words in the x86 entry frame. */
+#define SND_INJ_ENTRY_STACK_WORDS 3
+/** Required x64 stack alignment before placing the synthetic return slot. */
+#define SND_INJ_X64_STACK_ALIGNMENT 16
+
+/** Registers and remote stack data applied by a hijack operation. */
+typedef struct {
+    SND_THREAD_REGISTERS registers;
+    ULONG_PTR            stack[SND_INJ_ENTRY_STACK_WORDS];
+    SIZE_T               stack_size;
+} snd_inj_entry_frame_t;
 
 /**
- * @name Entry-Frame ABI Policy
- * @brief Architecture-specific rules for painting a thread's entry frame.
- * @{
- */
-#define SND_EFLAGS_IF           0x00000200UL
-#define SND_EFLAGS_RESERVED1    0x00000002UL
-#define SND_ENTRY_FLAGS(rflags) (((rflags) & SND_EFLAGS_IF) | SND_EFLAGS_RESERVED1)
-
-#if defined(_WIN64)
-#define SND_ENTRY_REGISTER_ARGS 1 /* first args ride in RCX/RDX         */
-#define SND_ENTRY_ALIGN_SP(sp)  (((sp) & ~((ULONG_PTR)0xF)) - sizeof(PVOID))
-#else
-#define SND_ENTRY_REGISTER_ARGS 0    /* cdecl/stdcall marshal args on stack */
-#define SND_ENTRY_ALIGN_SP(sp)  (sp) /* no alignment requirement on x86     */
-#endif
-/** @} */
-
-/**
- * @brief Paints a remote entry frame from intent onto a portable context.
+ * @brief Paints a complete remote entry frame from intent.
  *
  * Pure function: no I/O. Places @p entry into `ip`, aligns `sp` from the live
- * context via the arch ABI macro, masks `rflags`, and — only when the
- * architecture marshals arguments in registers — wires `cx := arg1`,
- * `dx := arg2`.
+ * context via the arch ABI policy, masks `rflags`, and wires arguments for
+ * the target ABI. On x64, arguments are placed in `cx`/`dx`; on x86, the
+ * return address and arguments are placed in the returned stack frame.
  *
  * @param live Live context captured from the suspended thread (ip unread;
  *        sp and rflags consumed).
  * @param entry Target instruction pointer (payload entry point, never NULL).
+ * @param return_thunk Optional return address. A null value means the payload
+ *        must not return and no return slot is written.
  * @param arg1  First argument (BOF args pointer, else 0/NULL).
  * @param arg2  Second argument (BOF arg_len, else 0).
- * @param out   Receives the painted frame to pass to `set_context`.
+ * @param out   Receives the registers and stack frame to apply remotely.
  * @retval SND_OK On success.
  * @retval SND_STATUS_NULL_POINTER If @p live, @p out, or @p entry is NULL.
- * @retval SND_STATUS_ARCH_MISMATCH On architectures that marshal entry
- * arguments on the stack (x86 cdecl/stdcall), which a context-only hijack
- * cannot express.
+ * @retval SND_STATUS_INVALID_PARAMETERS_COMBINATION If the captured stack
+ * pointer cannot accommodate the x86 entry frame.
  */
-snd_status_t snd_inj_hijack_prepare_frame(const SND_THREAD_REGISTERS *live, PVOID entry, ULONG_PTR arg1, ULONG_PTR arg2,
-                                          SND_THREAD_REGISTERS *out);
+snd_status_t snd_inj_hijack_prepare_frame(const SND_THREAD_REGISTERS *live, PVOID entry, PVOID return_thunk,
+                                          ULONG_PTR arg1, ULONG_PTR arg2, snd_inj_entry_frame_t *out);
 
 /**
  * @brief Executes the hijack tail on the suspended initial thread.
  *
  * Requires stage `SND_INJ_STAGE_PROTECTIONS_SET`. Reads the live context,
- * paints the entry frame from `remote_entry_point` (falling back to
- * `remote_base`) and the supplied arguments, writes the return thunk onto the
- * target stack if provided, applies the context, and resumes the thread.
+ * resolves a return thunk through the engine when `ctx->return_policy` is
+ * `SND_INJ_RETURN_GRACEFUL`, paints the entry frame
+ * from `remote_entry_point` (falling back to `remote_base`), writes its stack
+ * data remotely, applies the context, and resumes the thread.
  *
  * @param ctx Context after `SND_INJ_STAGE_PROTECTIONS_SET`, with `proc_api`,
- *        `thread_api`, and `remote_thread` valid.
- * @param return_thunk Optional address of a benign function in the target to
- *        return into after the payload exits (e.g. ntdll RtlExitUserThread).
- *        NULL leaves the stack home unset (payload must not return).
+ *        `thread_api`, `remote_thread` valid, and `return_policy` set.
  * @param arg1 First argument to the payload (BOF args pointer, else 0).
  * @param arg2 Second argument to the payload (BOF arg_len, else 0).
  * @retval SND_OK On success.
  * @retval SND_STATUS_NULL_POINTER If @p ctx, or any required callback/stage
  * handle is NULL.
  * @retval SND_STATUS_INVALID_STAGE If the injection stage is not
- * `SND_INJ_STAGE_PROTECTIONS_SET`.
- * @retval SND_STATUS_ARCH_MISMATCH On architectures without register-arg
- * marshalling.
- * @retval Any error returned by a thread-api context callback, the remote
- * stack write, or the resume.
+ * `SND_INJ_STAGE_PROTECTIONS_SET`. A failed resume leaves the context at
+ * `SND_INJ_STAGE_CONTEXT_APPLIED` and it cannot be retried.
+ * @retval SND_STATUS_NULL_POINTER If the frame has content but `write_remote`
+ * is not available.
+ * @retval SND_STATUS_INVALID_PARAMETERS_COMBINATION If `return_policy` is
+ * unrecognized.
+ * @retval Any error returned by `snd_ntdll_get_active_export`, a thread API
+ * context callback, the remote stack write, or the resume.
  */
-snd_status_t snd_inj_hijack_execute(snd_inj_ctx_t *ctx, PVOID return_thunk, ULONG_PTR arg1, ULONG_PTR arg2);
+snd_status_t snd_inj_hijack_execute(snd_inj_ctx_t *ctx, ULONG_PTR arg1, ULONG_PTR arg2);
 
 SND_END_EXTERN_C
 

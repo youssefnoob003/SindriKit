@@ -300,13 +300,14 @@ Win32 `open` wants Win32/DOS names. NT/sys accept Object Manager paths (`\KnownD
 | `create_process_params` / `free_process_params` | RTL_USER_PROCESS_PARAMETERS (NT/sys) |
 | `create_process` | `(const snd_process_api_t *api, image_path, command_line, HANDLE *out_process, HANDLE *out_thread)` — suspended |
 | `open_process` | `(DWORD pid, DWORD desired_access, HANDLE *out)` |
-| `alloc_remote` / `write_remote` / `protect_remote` | Remote VA; alloc uses OS-chosen base |
+| `alloc_remote` / `free_remote` / `write_remote` / `protect_remote` | Remote VA; alloc uses OS-chosen base |
 | `create_remote_thread` | `(process, start, param, HANDLE *out_thread)` |
+| `terminate_process` | `(process, exit_code)` — used to abort hijack-created targets |
 | `close_handle` | Process or thread handle |
 
 NT/sys create via `NtCreateUserProcess`, with parameters built by the table's `create_process_params`; Win32 via `CreateProcessW`. To customize parameter building, supply your own `snd_process_api_t` with `create_process_params` / `free_process_params` callbacks.
 
-Codes include `SND_STATUS_PROCESS_CREATE_FAILED`, `PROCESS_OPEN_FAILED`, `PROCESS_REMOTE_*`, `THREAD_REMOTE_CREATE_FAILED`, `HANDLE_CLOSE_FAILED`.
+Codes include `SND_STATUS_PROCESS_CREATE_FAILED`, `PROCESS_TERMINATE_FAILED`, `PROCESS_OPEN_FAILED`, `PROCESS_REMOTE_*`, `THREAD_REMOTE_CREATE_FAILED`, `HANDLE_CLOSE_FAILED`.
 
 #### `snd_thread_api_t`
 
@@ -753,7 +754,7 @@ Include `sindri/injection.h`. Classic opens an existing PID. APC creates a suspe
 
 ### Shared context
 
-`sindri/injection/context.h`
+`sindri/injection/common/context.h` and `sindri/injection/common/cleanup.h`
 
 ```c
 typedef enum {
@@ -762,8 +763,14 @@ typedef enum {
     SND_INJ_STAGE_MEMORY_ALLOCATED,
     SND_INJ_STAGE_PAYLOAD_WRITTEN,
     SND_INJ_STAGE_PROTECTIONS_SET,
+    SND_INJ_STAGE_CONTEXT_APPLIED,
     SND_INJ_STAGE_EXECUTED,
 } snd_inj_stage_t;
+
+typedef enum {
+    SND_INJ_RETURN_NONE = 0,
+    SND_INJ_RETURN_GRACEFUL,
+} snd_inj_return_policy_t;
 
 typedef struct _snd_inj_ctx_t {
     DWORD  target_pid;          /* classic */
@@ -773,6 +780,7 @@ typedef struct _snd_inj_ctx_t {
     SIZE_T remote_size;
     HANDLE remote_thread;
     PVOID  remote_arg;          /* remote BOF args (COFF paths) */
+    BOOL   owns_target_process; /* cleanup may terminate a created target */
 
     snd_inj_stage_t stage;
 
@@ -780,13 +788,19 @@ typedef struct _snd_inj_ctx_t {
     const snd_process_api_t *proc_api;
     const snd_thread_api_t  *thread_api;        /* APC, hijack */
     const wchar_t           *target_image_path; /* APC, hijack */
+    snd_inj_return_policy_t  return_policy;     /* hijack return handling */
 } snd_inj_ctx_t;
 
 const char *snd_inj_stage_to_string(snd_inj_stage_t stage); /* "" if !SND_DEBUG */
 void        snd_inj_cleanup(snd_inj_ctx_t *ctx);
 ```
 
-`snd_inj_cleanup` closes `remote_thread` and `target_process` through `proc_api->close_handle`, clears remote fields, resets stage. Does not free loader-local mappings. No-op if `ctx` or `proc_api` is NULL.
+`snd_inj_cleanup` best-effort closes `remote_thread` through `thread_api` when
+available, otherwise through `proc_api`, closes `target_process`, and releases
+pre-execution remote memory when `proc_api->free_remote` is available. It does
+not release remote memory after successful execution or free loader-local
+mappings. It resets the context stage and remote fields. No-op if `ctx` or
+`proc_api` is NULL.
 
 | Chain | Required before start |
 |---|---|
@@ -796,6 +810,24 @@ void        snd_inj_cleanup(snd_inj_ctx_t *ctx);
 
 Injection has no domain-specific status header codes; failures are core stage errors plus primitive `PROCESS_*` / `THREAD_*`.
 
+### Common Injection
+
+`sindri/injection/common/target.h`, `staging.h`, `prepare.h`, `cleanup.h`
+
+The technique engines share target acquisition and remote staging through the
+common injection layer. Execution-specific engine headers expose only their
+technique-specific execution operations.
+
+| Function | Role |
+|---|---|
+| `snd_inj_open_target` | Open an existing process by PID |
+| `snd_inj_create_suspended_target` | Create a suspended target process |
+| `snd_inj_alloc_remote` / `snd_inj_alloc_remote_size` | Allocate remote staging memory |
+| `snd_inj_write_payload` | Write only the payload buffer |
+| `snd_inj_set_protections` | Transition staged memory to execute-read |
+| `snd_inj_prepare_pe` / `snd_inj_prepare_coff` | Bake and stage loader payloads for a selected target mode |
+| `snd_inj_cleanup` | Best-effort handles, target, and pre-execution remote-memory cleanup |
+
 ### Classic
 
 `sindri/injection/classic/engine.h`, `chain.h`
@@ -804,10 +836,10 @@ Engine (each step needs the previous stage):
 
 | Function | Callback | Next stage |
 |---|---|---|
-| `snd_inj_classic_open_target` | `open_process(pid, SND_PROCESS_ALL_ACCESS)` | `TARGET_ACQUIRED` |
-| `snd_inj_classic_alloc_remote` | `alloc_remote` `MEM_COMMIT\|RESERVE`, `PAGE_READWRITE`, size = `payload->size` | `MEMORY_ALLOCATED` |
-| `snd_inj_classic_write_payload` | `write_remote` | `PAYLOAD_WRITTEN` |
-| `snd_inj_classic_set_protections` | `protect_remote` → `SND_PAGE_EXECUTE_READ` | `PROTECTIONS_SET` |
+| `snd_inj_open_target` | `open_process(pid, SND_PROCESS_ALL_ACCESS)` | `TARGET_ACQUIRED` |
+| `snd_inj_alloc_remote` | `alloc_remote` `MEM_COMMIT\|RESERVE`, `PAGE_READWRITE`, size = `payload->size` | `MEMORY_ALLOCATED` |
+| `snd_inj_write_payload` | `write_remote` | `PAYLOAD_WRITTEN` |
+| `snd_inj_set_protections` | `protect_remote` → `SND_PAGE_EXECUTE_READ` | `PROTECTIONS_SET` |
 | `snd_inj_classic_execute` | `create_remote_thread` at `remote_entry_point` or `remote_base`, param `NULL` | `EXECUTED` |
 
 ```c
@@ -827,8 +859,8 @@ Same memory stages as classic; target acquisition and execute differ:
 
 | Function | Callback | Next stage |
 |---|---|---|
-| `snd_inj_apc_create_target` | `create_process` (suspended) | `TARGET_ACQUIRED` |
-| `snd_inj_apc_alloc_remote` / `snd_inj_apc_write_payload` / `snd_inj_apc_set_protections` | same as classic | … |
+| `snd_inj_create_suspended_target` | `create_process` (suspended) | `TARGET_ACQUIRED` |
+| `snd_inj_alloc_remote` / `snd_inj_write_payload` / `snd_inj_set_protections` | same as classic | … |
 | `snd_inj_apc_execute` | `thread_api->queue_apc` then `resume_thread` | `EXECUTED` |
 
 ```c
@@ -848,28 +880,37 @@ or APC-queueing a thread. No `create_remote_thread` and no APC.
 
 | Function | Callback | Next stage |
 |---|---|---|
-| `snd_inj_hijack_create_target` | `create_process` (suspended) | `TARGET_ACQUIRED` |
-| (shared staging) | `snd_inj_classic_alloc_remote` / `write_payload` / `set_protections` | `PROTECTIONS_SET` |
-| `snd_inj_hijack_execute` | `thread_api->get_context` → rewrite frame → `write_remote` (return home) → `set_context` → `resume_thread` | `EXECUTED` |
+| `snd_inj_create_suspended_target` | `create_process` (suspended) | `TARGET_ACQUIRED` |
+| (shared staging) | `snd_inj_alloc_remote` / `snd_inj_write_payload` / `snd_inj_set_protections` | `PROTECTIONS_SET` |
+| `snd_inj_hijack_execute` | `thread_api->get_context` → prepare ABI frame → `write_remote` (stack data) → `set_context` → `resume_thread` | `EXECUTED` |
 
 ```c
-snd_status_t snd_inj_hijack_prepare_frame(const SND_THREAD_REGISTERS *live, PVOID entry,
-                                          ULONG_PTR arg1, ULONG_PTR arg2, SND_THREAD_REGISTERS *out);
-snd_status_t snd_inj_hijack_execute(snd_inj_ctx_t *ctx, PVOID return_thunk, ULONG_PTR arg1, ULONG_PTR arg2);
+typedef struct {
+    SND_THREAD_REGISTERS registers;
+    ULONG_PTR            stack[3];
+    SIZE_T               stack_size;
+} snd_inj_entry_frame_t;
 
-snd_status_t snd_inj_hijack_shell(snd_inj_ctx_t *ctx, PVOID return_thunk);
-snd_status_t snd_inj_hijack_pe(snd_ldr_pe_ctx_t *ldr_ctx, snd_inj_ctx_t *inj_ctx, PVOID return_thunk);
-snd_status_t snd_inj_hijack_coff(snd_ldr_coff_ctx_t *ldr_ctx, snd_inj_ctx_t *inj_ctx, PVOID return_thunk,
-                                 const char *entry_point, void *args, int arg_len);
+snd_status_t snd_inj_hijack_prepare_frame(const SND_THREAD_REGISTERS *live, PVOID entry, PVOID return_thunk,
+                                           ULONG_PTR arg1, ULONG_PTR arg2, snd_inj_entry_frame_t *out);
+snd_status_t snd_inj_hijack_execute(snd_inj_ctx_t *ctx, ULONG_PTR arg1, ULONG_PTR arg2);
+
+snd_status_t snd_inj_hijack_shell(snd_inj_ctx_t *ctx);
+snd_status_t snd_inj_hijack_pe(snd_ldr_pe_ctx_t *ldr_ctx, snd_inj_ctx_t *inj_ctx);
+snd_status_t snd_inj_hijack_coff(snd_ldr_coff_ctx_t *ldr_ctx, snd_inj_ctx_t *inj_ctx, const char *entry_point,
+                                 void *args, int arg_len);
 ```
 
-The entry frame is painted by `snd_inj_hijack_prepare_frame`: `ip := entry`,
-`sp` 16-byte aligned with a return slot, `rflags` masked, and — on x64 where
-arguments ride in registers — `cx := arg1`, `dx := arg2`. On x86 the technique
-returns `SND_STATUS_ARCH_MISMATCH` because entry arguments are marshalled on the
-stack there. `return_thunk` (e.g. `RtlExitUserThread`) is written to the target
-stack at the new `sp` so returning payloads terminate cleanly; `NULL` leaves the
-home unset (payload must not return).
+The entry frame is prepared by `snd_inj_hijack_prepare_frame`: `ip := entry`,
+the architecture-specific `sp` is selected, `rflags` is sanitized, and the
+same logical call `(arg1, arg2)` is represented in the returned frame. x64 uses
+`cx`/`dx`; x86 uses stack words. The returned stack data is written to the
+target before `set_context` only when the frame has content; a frameless hijack
+(with `SND_INJ_RETURN_NONE` and zero arguments) performs no remote write, so a
+process table without `write_remote` is still usable. `write_remote` is required
+only when data must be written. `SND_INJ_RETURN_NONE` means the payload must not
+return; `SND_INJ_RETURN_GRACEFUL` makes the engine resolve a target-compatible
+thread-exit address.
 
 ---
 

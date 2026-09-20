@@ -125,6 +125,20 @@ static snd_status_t WINAPI nt_alloc_remote(HANDLE process, SIZE_T size, DWORD al
     return SND_OK;
 }
 
+static snd_status_t WINAPI nt_free_remote(HANDLE process, PVOID base_address, SIZE_T size, DWORD free_type) {
+    SND_CHECK_NULL(process, base_address);
+
+    FARPROC func_addr = NULL;
+    SND_TRY(snd_ntdll_get_active_export(SND_HASH_NTFREEVIRTUALMEMORY, &func_addr));
+
+    PVOID                     address              = base_address;
+    SIZE_T                    region_size          = size;
+    SND_NtFreeVirtualMemory_t pNtFreeVirtualMemory = (SND_NtFreeVirtualMemory_t)func_addr;
+    NTSTATUS                  nt_status            = pNtFreeVirtualMemory(process, &address, &region_size, free_type);
+
+    return SND_NT_SUCCESS(nt_status) ? SND_OK : SND_ERR_NT(SND_STATUS_PROCESS_REMOTE_FREE_FAILED, nt_status);
+}
+
 static snd_status_t WINAPI nt_write_remote(HANDLE process, PVOID base_address, const void *buffer, SIZE_T size,
                                            SIZE_T *bytes_written) {
     SND_CHECK_NULL(process, base_address, buffer);
@@ -179,6 +193,17 @@ static snd_status_t WINAPI nt_create_remote_thread(HANDLE process, PVOID start_a
     return SND_NT_SUCCESS(nt_status) ? SND_OK : SND_ERR_NT(SND_STATUS_THREAD_REMOTE_CREATE_FAILED, nt_status);
 }
 
+static snd_status_t WINAPI nt_terminate_process(HANDLE process, UINT exit_code) {
+    SND_CHECK_NULL(process);
+
+    FARPROC func_addr = NULL;
+    SND_TRY(snd_ntdll_get_active_export(SND_HASH_NTTERMINATEPROCESS, &func_addr));
+
+    SND_NtTerminateProcess_t pNtTerminateProcess = (SND_NtTerminateProcess_t)func_addr;
+    NTSTATUS                 nt_status           = pNtTerminateProcess(process, (NTSTATUS)exit_code);
+    return SND_NT_SUCCESS(nt_status) ? SND_OK : SND_ERR_NT(SND_STATUS_PROCESS_TERMINATE_FAILED, nt_status);
+}
+
 static snd_status_t WINAPI nt_close_handle(HANDLE handle) {
     if (!handle || handle == INVALID_HANDLE_VALUE) {
         return SND_OK;
@@ -198,7 +223,9 @@ const snd_process_api_t snd_proc_nt = {.create_process_params = nt_create_proces
                                        .create_process        = nt_create_process,
                                        .open_process          = nt_open_process,
                                        .alloc_remote          = nt_alloc_remote,
+                                       .free_remote           = nt_free_remote,
                                        .write_remote          = nt_write_remote,
                                        .protect_remote        = nt_protect_remote,
                                        .create_remote_thread  = nt_create_remote_thread,
+                                       .terminate_process     = nt_terminate_process,
                                        .close_handle          = nt_close_handle};

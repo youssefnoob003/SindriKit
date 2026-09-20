@@ -3,7 +3,7 @@
 
 #include <sindri/common/macros.h>
 #include <sindri/injection/apc/engine.h>
-#include <sindri/injection/context.h>
+#include <sindri/injection/common/context.h>
 
 SND_BEGIN_EXTERN_C
 
@@ -18,9 +18,8 @@ typedef struct _snd_ldr_coff_ctx snd_ldr_coff_ctx_t;
  * @param ctx Initialized injection context with target_image_path, payload, proc_api, and thread_api set.
  * @retval SND_OK On success.
  * @retval SND_STATUS_NULL_POINTER If @p ctx is NULL.
- * @retval Any error returned by `snd_inj_apc_create_target`,
- * `snd_inj_apc_alloc_remote`, `snd_inj_apc_write_payload`,
- * `snd_inj_apc_set_protections`, or `snd_inj_apc_execute`.
+ * @retval Any error returned by the common target/staging operations or
+ * `snd_inj_apc_execute`.
  */
 snd_status_t snd_inj_apc_shell(snd_inj_ctx_t *ctx);
 
@@ -34,10 +33,9 @@ snd_status_t snd_inj_apc_shell(snd_inj_ctx_t *ctx);
  * @retval SND_STATUS_NULL_POINTER If @p ldr_ctx, @p inj_ctx, or the loader
  * source buffer is NULL.
  * @retval Any error returned by `snd_pe_parse`,
- * `snd_ldr_pe_allocate_and_copy_image`, `snd_inj_apc_create_target`,
- * `snd_inj_apc_alloc_remote`, `snd_ldr_pe_apply_relocations`,
- * `snd_ldr_pe_resolve_imports`, `snd_inj_apc_write_payload`,
- * `snd_inj_apc_set_protections`, or `snd_inj_apc_execute`.
+ * `snd_ldr_pe_allocate_and_copy_image`, common target/staging operations,
+ * `snd_ldr_pe_apply_relocations`, `snd_ldr_pe_resolve_imports`, or
+ * `snd_inj_apc_execute`.
  */
 snd_status_t snd_inj_apc_pe(snd_ldr_pe_ctx_t *ldr_ctx, snd_inj_ctx_t *inj_ctx);
 
@@ -54,9 +52,8 @@ snd_status_t snd_inj_apc_pe(snd_ldr_pe_ctx_t *ldr_ctx, snd_inj_ctx_t *inj_ctx);
  * @retval SND_STATUS_NULL_POINTER If @p ldr_ctx, @p inj_ctx, or the loader
  * source buffer is NULL.
  * @retval Any error returned by `snd_coff_parse`,
- * `snd_ldr_coff_allocate_and_copy_sections`, `snd_inj_apc_create_target`,
+ * `snd_ldr_coff_allocate_and_copy_sections`, common target/staging operations,
  * `snd_ldr_coff_resolve_symbols`, `snd_ldr_coff_apply_relocations`,
- * `snd_inj_apc_write_payload`, `snd_inj_apc_set_protections`,
  * `snd_coff_find_symbol_by_name`, or `snd_inj_apc_execute`.
  */
 snd_status_t snd_inj_apc_coff(snd_ldr_coff_ctx_t *ldr_ctx, snd_inj_ctx_t *inj_ctx, const char *entry_point, void *args,

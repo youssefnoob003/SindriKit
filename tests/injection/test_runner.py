@@ -82,11 +82,20 @@ def make_case(technique: str, payload: str, backend_label: str, backend_args, ar
     )
 
 
-def _remove_marker(arch: str) -> None:
-    try:
-        os.remove(marker_path(arch))
-    except OSError:
-        pass
+def _remove_marker(arch: str, retries: int = 50) -> bool:
+    """Remove the marker, waiting for a terminated target to release it."""
+    path = marker_path(arch)
+    for _ in range(retries):
+        try:
+            os.remove(path)
+            return True
+        except FileNotFoundError:
+            return True
+        except PermissionError:
+            time.sleep(POLL_INTERVAL)
+        except OSError:
+            return False
+    return not os.path.exists(path)
 
 
 def run_inject_case(tc: TestCase, known_missing: Optional[set]) -> Optional[bool]:
@@ -95,7 +104,8 @@ def run_inject_case(tc: TestCase, known_missing: Optional[set]) -> Optional[bool
     spawned = {"proc": None}
 
     def pre_run() -> Optional[str]:
-        _remove_marker(arch)
+        if not _remove_marker(arch):
+            return f"marker file is still locked: {marker}"
         target = target_image(arch)
         if not os.path.exists(target):
             return f"target image missing (run 'build.bat tests'): {target}"
@@ -122,14 +132,14 @@ def run_inject_case(tc: TestCase, known_missing: Optional[set]) -> Optional[bool
             spawned["proc"].kill()
             spawned["proc"].wait()
         try:
-            subprocess.run(["taskkill", "/IM", f"test_inject_target_{arch}.exe", "/F"],
+            subprocess.run(["taskkill", "/IM", f"test_inject_target_{arch}.exe", "/T", "/F"],
                            capture_output=True, text=True)
         except OSError:
             pass
         _remove_marker(arch)
 
-    # Expected-rejection cases (x86 hijack) assert a clean failure and produce
-    # no marker, so skip the side-effect verification for them.
+    # Rejection cases, when present, assert a clean failure and produce no
+    # marker, so skip the side-effect verification for them.
     verify_fn = None if tc.expect_reject is not None else verify
 
     return run_case(tc, TREES, known_missing=known_missing, timeout=INJECT_TIMEOUT,
@@ -180,5 +190,5 @@ if __name__ == "__main__":
     run_all([
         ("classic", [("pe", False), ("coff", False)]),
         ("apc",     [("pe", False), ("coff", False)]),
-        ("hijack",  [("pe", True),  ("coff", True)]),
+        ("hijack",  [("pe", False), ("coff", False)]),
     ])

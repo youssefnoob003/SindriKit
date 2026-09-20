@@ -100,6 +100,8 @@ typedef NTSTATUS(NTAPI *SND_NtCreateThreadEx_t)(HANDLE *ThreadHandle, ACCESS_MAS
                                                 ULONG CreateFlags, SIZE_T ZeroBits, SIZE_T StackSize,
                                                 SIZE_T MaximumStackSize, PVOID AttributeList);
 
+typedef NTSTATUS(NTAPI *SND_NtTerminateProcess_t)(HANDLE ProcessHandle, NTSTATUS ExitStatus);
+
 /*
  * @brief Type definition for NtQueueApcThread function.
  */

@@ -260,6 +260,19 @@ static snd_status_t WINAPI sys_alloc_remote(HANDLE process, SIZE_T size, DWORD a
     return SND_OK;
 }
 
+static snd_status_t WINAPI sys_free_remote(HANDLE process, PVOID base_address, SIZE_T size, DWORD free_type) {
+    SND_CHECK_NULL(process, base_address);
+
+    PVOID              address     = base_address;
+    SIZE_T             region_size = size;
+    snd_syscall_args_t args        = {
+        .arg1 = process, .arg2 = &address, .arg3 = &region_size, .arg4 = (PVOID)(ULONG_PTR)free_type};
+    NTSTATUS nt_status;
+    SND_TRY(snd_syscall_invoke(SND_HASH_NTFREEVIRTUALMEMORY, &args, &nt_status));
+
+    return SND_NT_SUCCESS(nt_status) ? SND_OK : SND_ERR_NT(SND_STATUS_PROCESS_REMOTE_FREE_FAILED, nt_status);
+}
+
 static snd_status_t WINAPI sys_write_remote(HANDLE process, PVOID base_address, const void *buffer, SIZE_T size,
                                             SIZE_T *bytes_written) {
     SND_CHECK_NULL(process, base_address, buffer);
@@ -318,6 +331,16 @@ static snd_status_t WINAPI sys_create_remote_thread(HANDLE process, PVOID start_
     return SND_NT_SUCCESS(nt_status) ? SND_OK : SND_ERR_NT(SND_STATUS_THREAD_REMOTE_CREATE_FAILED, nt_status);
 }
 
+static snd_status_t WINAPI sys_terminate_process(HANDLE process, UINT exit_code) {
+    SND_CHECK_NULL(process);
+
+    snd_syscall_args_t args = {.arg1 = process, .arg2 = (PVOID)(ULONG_PTR)exit_code};
+    NTSTATUS           nt_status;
+    SND_TRY(snd_syscall_invoke(SND_HASH_NTTERMINATEPROCESS, &args, &nt_status));
+
+    return SND_NT_SUCCESS(nt_status) ? SND_OK : SND_ERR_NT(SND_STATUS_PROCESS_TERMINATE_FAILED, nt_status);
+}
+
 static snd_status_t WINAPI sys_close_handle(HANDLE handle) {
     if (!handle || handle == INVALID_HANDLE_VALUE) {
         return SND_OK;
@@ -336,7 +359,9 @@ const snd_process_api_t snd_proc_sys = {.create_process_params = sys_create_proc
                                         .create_process        = sys_create_process,
                                         .open_process          = sys_open_process,
                                         .alloc_remote          = sys_alloc_remote,
+                                        .free_remote           = sys_free_remote,
                                         .write_remote          = sys_write_remote,
                                         .protect_remote        = sys_protect_remote,
                                         .create_remote_thread  = sys_create_remote_thread,
+                                        .terminate_process     = sys_terminate_process,
                                         .close_handle          = sys_close_handle};

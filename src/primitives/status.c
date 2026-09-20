@@ -52,6 +52,8 @@ const char *snd_prim_status_to_string(int code) {
         return "Process open failed";
     case SND_STATUS_PROCESS_REMOTE_ALLOC_FAILED:
         return "Remote memory allocation failed";
+    case SND_STATUS_PROCESS_REMOTE_FREE_FAILED:
+        return "Remote memory release failed";
     case SND_STATUS_PROCESS_REMOTE_WRITE_FAILED:
         return "Remote memory write failed";
     case SND_STATUS_PROCESS_REMOTE_PROTECT_FAILED:
@@ -70,6 +72,8 @@ const char *snd_prim_status_to_string(int code) {
         return "Thread context get failed";
     case SND_STATUS_THREAD_SET_CONTEXT_FAILED:
         return "Thread context set failed";
+    case SND_STATUS_THREAD_EXIT_FAILED:
+        return "Thread exit failed";
 
     // Syscall
     case SND_STATUS_SYSCALL_INVOKER_NOT_INITIALIZED:

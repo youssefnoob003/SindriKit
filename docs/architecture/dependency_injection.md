@@ -64,9 +64,11 @@ There is **no** `snd_mod_sys`. Import resolution during reflective load uses PEB
 | `create_process` | Spawn a suspended process (used by the APC chain) |
 | `open_process` | Acquire target process handle |
 | `alloc_remote` | Remote virtual allocation |
+| `free_remote` | Release remote virtual allocation |
 | `write_remote` | Cross-process write |
 | `protect_remote` | Remote protection change |
 | `create_remote_thread` | Start execution in target |
+| `terminate_process` | Abort a process created for hijack cleanup |
 | `close_handle` | Release handle |
 
 **Global instances:** `snd_proc_win`, `snd_proc_nt`, `snd_proc_sys` — `include/sindri/primitives/process.h`
