@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [2.3.1] - 2026-09-20
+
+Patch release fixing x64 thread-hijack stack-frame alignment.
+
+### Fixed
+- **x64 Thread Hijacking:** Aligns the live stack pointer downward before
+  placing the synthetic return slot, preserving the required entry ABI for
+  non-aligned stacks.
+- **Hijack Unit Test:** Covers non-aligned x64 stack pointers and verifies the
+  corrected frame address.
+
+---
+
 ## [2.3.0] - 2026-09-20
 
 Ninth major release. Injection now uses shared target/staging engines, with

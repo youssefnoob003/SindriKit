@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(SindriKit VERSION 2.3.0 LANGUAGES C ASM_MASM)
+project(SindriKit VERSION 2.3.1 LANGUAGES C ASM_MASM)
 
 message(STATUS "SindriKit ${PROJECT_VERSION}")
 

@@ -12,7 +12,7 @@
 static snd_status_t snd_hijack_prepare_frame_x64(const SND_THREAD_REGISTERS *live, PVOID entry, PVOID return_thunk,
                                                  ULONG_PTR arg1, ULONG_PTR arg2, snd_inj_entry_frame_t *out) {
     out->registers.ip     = (ULONG_PTR)entry;
-    out->registers.sp     = SND_ALIGN_UP(live->sp, SND_INJ_X64_STACK_ALIGNMENT) - sizeof(PVOID);
+    out->registers.sp     = SND_ALIGN_DOWN(live->sp, SND_INJ_X64_STACK_ALIGNMENT) - sizeof(PVOID);
     out->registers.cx     = arg1;
     out->registers.dx     = arg2;
     out->registers.rflags = live->rflags | SND_EFLAGS_IF | SND_EFLAGS_RESERVED1;
