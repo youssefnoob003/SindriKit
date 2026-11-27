@@ -1,6 +1,6 @@
 #include <windows.h>
 
-DECLSPEC_IMPORT WINUSERAPI HWND WINAPI USER32$GetDesktopWindow(void);
+DECLSPEC_IMPORT HWND WINAPI USER32$GetDesktopWindow(void);
 DECLSPEC_IMPORT int                    MSVCRT$puts(const char *str);
 
 void go(char *args, int alen) {

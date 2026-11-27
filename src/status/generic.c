@@ -19,7 +19,7 @@ const char *snd_generic_status_to_string(int code) {
     case SND_STATUS_TOO_MANY_ARGUMENTS:
         return "Too many arguments provided";
     default:
-        return "Unkown error code";
+        return "Unknown error code";
     }
 #else
     (void)code;

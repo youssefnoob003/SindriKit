@@ -55,7 +55,7 @@ Future techniques will add their own engine headers (e.g. `injection/hollowing/e
 | `SND_INJ_STAGE_TARGET_ACQUIRED` | `snd_inj_open_target` / `snd_inj_create_suspended_target` | Handle to target process / suspended process created |
 | `SND_INJ_STAGE_MEMORY_ALLOCATED` | `snd_inj_alloc_remote` / `snd_inj_alloc_remote_size` | RW region reserved in remote process |
 | `SND_INJ_STAGE_PAYLOAD_WRITTEN` | `snd_inj_write_payload` | Payload bytes copied remotely |
-| `SND_INJ_STAGE_PROTECTIONS_SET` | `snd_inj_set_protections` | Remote region transitioned to RX |
+| `SND_INJ_STAGE_PROTECTIONS_SET` | `snd_inj_set_protections` / `snd_inj_set_protections_with_plan` | Remote region transitioned to final protections (RX for shellcode, per-section for PE/COFF) |
 | `SND_INJ_STAGE_CONTEXT_APPLIED` | `snd_inj_hijack_execute` | Thread context rewritten; resume is still pending |
 | `SND_INJ_STAGE_EXECUTED` | `snd_inj_classic_execute` / `snd_inj_apc_execute` / `snd_inj_hijack_execute` | Remote thread created / APC queued and thread resumed / initial thread resumed with rewritten context |
 
@@ -117,13 +117,13 @@ The PE chain deliberately interleaves loader and injection stages so relocations
 | 8 | Loader | `snd_ldr_pe_apply_relocations` — delta = remote_base − ImageBase |
 | 9 | Loader | `snd_ldr_pe_resolve_imports` — IAT patched locally |
 | 10 | Injection | `snd_inj_write_payload` — writes baked image to remote |
-| 11 | Injection | `snd_inj_set_protections` — flat `PAGE_EXECUTE_READ` on remote region |
+| 11 | Injection | `snd_inj_set_protections_with_plan` — per-section/page-run protections via `snd_ldr_pe_for_each_protection_region` |
 | 12 | Injection | `remote_entry_point = remote_base + ep_rva`; `snd_inj_classic_execute` |
 
 **Key behaviors:**
 
 - **`execution_base`** on the loader context is set to the remote allocation address *before* relocations so the delta matches where the image will run.
-- **Per-section protections** (`snd_ldr_pe_apply_memory_protections`) are **not** called — the injection path applies a single RX protection over the entire remote allocation.
+- **Per-section protections** are shared with `snd_ldr_pe_apply_memory_protections` via `snd_ldr_pe_for_each_protection_region`, protecting headers `PAGE_READONLY`, `.text` `PAGE_EXECUTE_READ`, `.data`/`.bss` `PAGE_READWRITE`, and unmapped gaps `PAGE_NOACCESS` remotely via `proc_api->protect_remote`.
 - **TLS callbacks** are **not** invoked in the current PE injection chain.
 - **Local execution** (`snd_ldr_pe_execute_image`) is blocked when `local_base != execution_base`; detach/free similarly refuse remote-prepared images.
 
@@ -167,8 +167,8 @@ The COFF chain relies on allocating a remote buffer that is large enough to hold
 | 7 | Loader | `snd_ldr_coff_apply_relocations` |
 | 8 | Injection | `snd_inj_write_payload` — writes baked image to remote |
 | 9 | Injection | Optional: write BOF arguments buffer to `remote_base + allocated_size` |
-| 10 | Injection | `snd_inj_set_protections` — flat `PAGE_EXECUTE_READ` |
-| 11 | Injection | Find entry point offset, calculate `remote_entry_point`, and `snd_inj_classic_execute` |
+| 10 | Injection | `snd_inj_set_protections_with_plan` — per-section, RW metadata/IAT/BSS, RX trampolines, and RW argument buffer |
+| 11 | Injection | `snd_ldr_coff_resolve_entry_offset`, calculate `remote_entry_point`, and `snd_inj_classic_execute` |
 
 **Key behaviors:**
 

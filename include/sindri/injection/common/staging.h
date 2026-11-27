@@ -3,6 +3,7 @@
 
 #include <sindri/common/macros.h>
 #include <sindri/injection/common/context.h>
+#include <sindri/primitives/memory.h>
 #include <sindri/status.h>
 
 SND_BEGIN_EXTERN_C
@@ -45,15 +46,42 @@ snd_status_t snd_inj_alloc_remote_size(snd_inj_ctx_t *ctx, SIZE_T size);
 snd_status_t snd_inj_write_payload(snd_inj_ctx_t *ctx);
 
 /**
+ * @brief Callback supplying per-region remote protection ranges for a staged payload.
+ * @param apply_region Callback to invoke once per `(offset, size, protect)` region.
+ * @param apply_ctx Opaque state passed through to @p apply_region.
+ * @param plan_ctx Caller-supplied protection plan context.
+ * @retval SND_OK On success, or the first error returned by @p apply_region.
+ */
+typedef snd_status_t (*snd_inj_protect_plan_cb)(snd_memory_protect_region_cb apply_region, void *apply_ctx,
+                                                const void *plan_ctx);
+
+/**
  * @brief Sets the staged remote region to execute-read protection.
  * @param ctx Context after `SND_INJ_STAGE_PAYLOAD_WRITTEN` with a
  * `protect_remote` callback.
  * @retval SND_OK On success; the stage becomes `SND_INJ_STAGE_PROTECTIONS_SET`.
  * @retval SND_STATUS_NULL_POINTER If a required context or callback is NULL.
  * @retval SND_STATUS_INVALID_STAGE If the payload has not been written.
+ * @retval SND_STATUS_CORRUPTED_STAGE If remote target state is incomplete.
  * @retval Any error returned by `snd_process_api_t::protect_remote`.
  */
 snd_status_t snd_inj_set_protections(snd_inj_ctx_t *ctx);
+
+/**
+ * @brief Applies caller-planned per-region protections to the staged remote allocation.
+ * @param ctx Context after `SND_INJ_STAGE_PAYLOAD_WRITTEN` with a
+ * `protect_remote` callback.
+ * @param plan_cb Protection plan callback emitting bounded `(offset, size, protect)` regions.
+ * @param plan_ctx Caller-supplied context forwarded to @p plan_cb.
+ * @retval SND_OK On success; the stage becomes `SND_INJ_STAGE_PROTECTIONS_SET`.
+ * @retval SND_STATUS_NULL_POINTER If a required context, callback, or @p plan_cb is NULL.
+ * @retval SND_STATUS_INVALID_STAGE If the payload has not been written.
+ * @retval SND_STATUS_CORRUPTED_STAGE If remote target state is incomplete or zero regions were applied.
+ * @retval SND_STATUS_INVALID_PARAMETERS_COMBINATION If a region is empty or exceeds `ctx->remote_size`.
+ * @retval Any error returned by @p plan_cb or `snd_process_api_t::protect_remote`.
+ */
+snd_status_t snd_inj_set_protections_with_plan(snd_inj_ctx_t *ctx, snd_inj_protect_plan_cb plan_cb,
+                                               const void *plan_ctx);
 
 SND_END_EXTERN_C
 

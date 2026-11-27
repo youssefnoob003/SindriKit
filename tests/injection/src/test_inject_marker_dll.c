@@ -9,11 +9,22 @@ void snd_marker_entry(void);
  * from constant-folding the reference away (which would strip the anchor). */
 static void (*volatile g_snd_reloc_anchor)(void) = snd_marker_entry;
 
+/* Mutable .data and .bss globals verify that remote PE injection applies
+ * writable protections to data sections rather than flat PAGE_EXECUTE_READ. */
+static volatile DWORD g_snd_data_probe = 1;
+static volatile DWORD g_snd_bss_probe;
+
 static BOOL snd_write_marker(void) {
     static const char content[] = "SND_INJECT_OK";
     char              exe[MAX_PATH];
     DWORD             written = 0;
     HANDLE            h;
+
+    g_snd_data_probe += 1;
+    g_snd_bss_probe += 2;
+    if (g_snd_data_probe != 2 || g_snd_bss_probe != 2) {
+        return FALSE;
+    }
 
     DWORD n = GetModuleFileNameA(NULL, exe, sizeof(exe));
     if (n == 0 || n >= sizeof(exe)) {

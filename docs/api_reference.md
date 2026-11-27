@@ -269,6 +269,12 @@ All callbacks are `WINAPI` and return `snd_status_t` unless noted.
 
 `address` NULL lets the OS choose. NT/sys `free` with `size == 0` is success. Primitive codes: `SND_STATUS_ALLOC_FAILED`, `FREE_FAILED`, `PROTECT_FAILED`.
 
+Region walker callback in `sindri/primitives/memory.h`:
+
+```c
+typedef snd_status_t (*snd_memory_protect_region_cb)(SIZE_T offset, SIZE_T size, DWORD protect, void *user_ctx);
+```
+
 #### `snd_module_api_t` — load / EAT
 
 | Field | Signature |
@@ -685,6 +691,7 @@ typedef struct _snd_ldr_pe_ctx {
 | `snd_ldr_pe_apply_relocations` | `SECTIONS_MAPPED` | `RELOCATED` |
 | `snd_ldr_pe_resolve_imports` | `RELOCATED` | `IMPORTS_RESOLVED` |
 | `snd_ldr_pe_apply_memory_protections` | `IMPORTS_RESOLVED` | `READY_FOR_EXECUTION` (also resolves `entry_point`) |
+| `snd_ldr_pe_for_each_protection_region` | any parsed PE + `virtual_size` | invokes `snd_memory_protect_region_cb` per merged page-protection run |
 | `snd_ldr_pe_execute_tls_callbacks(ctx, reason)` | ≥ `READY_FOR_EXECUTION` | (void) |
 | `snd_ldr_pe_get_proc_address(ctx, name, out)` | ≥ `READY_FOR_EXECUTION` | via `snd_pe_get_export_address` + `mod_api->get_module_base` |
 | `void snd_ldr_pe_free_mapped_image(ctx)` | any with `local_base` | toward `PARSED` |
@@ -736,12 +743,14 @@ typedef struct _snd_ldr_coff_ctx {
 
 | Function | Role |
 |---|---|
-| `snd_ldr_coff_load(ctx)` | Parse → copy sections → resolve `MODULE$Func` via `mod_api` → relocs → protect. Leaves `READY_FOR_EXECUTION`. Frees on failure after alloc |
-| `snd_ldr_coff_execute_image(ctx, entry_name, bof_args, bof_arg_len)` | Local call of named symbol (e.g. `"go"`) |
-| `snd_ldr_coff_allocate_and_copy_sections` | Requires `PARSED` |
+| `snd_ldr_coff_load(ctx)` | Parse → arch check → copy sections → resolve `MODULE$Func` via `mod_api` → relocs → protect. Leaves `READY_FOR_EXECUTION`. Frees on failure after alloc |
+| `snd_ldr_coff_execute_image(ctx, entry_name, bof_args, bof_arg_len)` | Local call of named symbol (`NULL` defaults to `"go"`); requires `READY_FOR_EXECUTION` and `local_base == execution_base`; sets `EXECUTED` |
+| `snd_ldr_coff_allocate_and_copy_sections` | Requires `PARSED`; allocates RW staging memory and copies sections |
 | `snd_ldr_coff_resolve_symbols` | Requires `SECTIONS_MAPPED` |
 | `snd_ldr_coff_apply_relocations` | Requires `SYMBOLS_RESOLVED` |
 | `snd_ldr_coff_apply_memory_protections` | Requires `RELOCATED` |
+| `snd_ldr_coff_for_each_protection_region` | Requires `≥ RELOCATED`; invokes `snd_memory_protect_region_cb` per section, RW metadata/BSS, and RX trampolines |
+| `snd_ldr_coff_resolve_entry_offset` | Bounds-checked entry symbol lookup returning image-relative offset |
 | `void snd_ldr_coff_free_mapped_image(ctx)` | Release mapping |
 
 `snd_ldr_coff_stage_to_string` follows the same debug rule as the PE helper. x64 distant calls use 16-byte `JMP [RIP+0]` trampolines (`SND_X64_TRAMPOLINE_SIZE`).
@@ -824,8 +833,9 @@ technique-specific execution operations.
 | `snd_inj_create_suspended_target` | Create a suspended target process |
 | `snd_inj_alloc_remote` / `snd_inj_alloc_remote_size` | Allocate remote staging memory |
 | `snd_inj_write_payload` | Write only the payload buffer |
-| `snd_inj_set_protections` | Transition staged memory to execute-read |
-| `snd_inj_prepare_pe` / `snd_inj_prepare_coff` | Bake and stage loader payloads for a selected target mode |
+| `snd_inj_set_protections` | Transition opaque staged memory (shellcode) to execute-read |
+| `snd_inj_set_protections_with_plan` | Apply bounded multi-region protections via `snd_inj_protect_plan_cb` and transition to `PROTECTIONS_SET` |
+| `snd_inj_prepare_pe` / `snd_inj_prepare_coff` | Bake, stage, and apply per-section protections for PE/COFF payloads |
 | `snd_inj_cleanup` | Best-effort handles, target, and pre-execution remote-memory cleanup |
 
 ### Classic

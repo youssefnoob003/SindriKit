@@ -207,7 +207,7 @@ Before calling `snd_ldr_pe_prepare_image`:
 | Parse + alloc/copy | Yes | Local RW image |
 | Relocations | Yes | `execution_base = remote_base` before apply |
 | Imports | Yes | Local IAT fixup |
-| Per-section protections | **No** | Injection uses flat RX on remote region |
+| Per-section protections | Yes (remote) | Shared region enumeration (`snd_ldr_pe_for_each_protection_region`) applied via `proc_api->protect_remote` |
 | TLS + local execute | **No** | Remote thread starts at entry RVA |
 | Write + remote protect + thread | Injection domain | Via `snd_inj_ctx_t` |
 

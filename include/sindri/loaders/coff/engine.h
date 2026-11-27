@@ -5,6 +5,7 @@
 #include <sindri/common/macros.h>
 #include <sindri/internal/windows/types.h>
 #include <sindri/parsers/coff/parser.h>
+#include <sindri/primitives/memory.h>
 #include <sindri/primitives/os_api.h>
 #include <sindri/status/core.h>
 
@@ -93,6 +94,8 @@ SND_SHUFFLE_END
  * @retval SND_STATUS_NULL_POINTER If @p ctx, the memory API, or its
  * `alloc` callback is NULL.
  * @retval SND_STATUS_INVALID_STAGE If the loader stage is invalid.
+ * @retval SND_STATUS_COFF_LOADER_NO_SECTIONS If the COFF object has no sections.
+ * @retval SND_STATUS_COFF_LOADER_SECTION_TRUNCATED If a non-BSS raw section exceeds the source buffer.
  * @retval SND_STATUS_COFF_LOADER_MAP_SIZE_OVERFLOW If the mapping size
  * overflows.
  * @retval SND_STATUS_COFF_LOADER_BSS_SIZE_OVERFLOW If BSS size arithmetic
@@ -146,12 +149,40 @@ snd_status_t snd_ldr_coff_resolve_symbols(snd_ldr_coff_ctx_t *ctx);
 snd_status_t snd_ldr_coff_apply_relocations(snd_ldr_coff_ctx_t *ctx);
 
 /**
+ * @brief Enumerates section, metadata, and trampoline protection regions for a prepared COFF image.
+ * @param ctx The COFF loader context after relocation (`>= SND_COFF_STAGE_RELOCATED`).
+ * @param cb Callback invoked once per contiguous protection region relative to image base.
+ * @param user_ctx Caller-supplied context forwarded to @p cb.
+ * @retval SND_OK On success.
+ * @retval SND_STATUS_NULL_POINTER If @p ctx, @p cb, or mapped pointers are NULL.
+ * @retval SND_STATUS_INVALID_STAGE If the loader stage is below `SND_COFF_STAGE_RELOCATED`.
+ * @retval SND_STATUS_CORRUPTED_STAGE If `allocated_size` is zero.
+ * @retval Any error returned by @p cb.
+ */
+snd_status_t snd_ldr_coff_for_each_protection_region(const snd_ldr_coff_ctx_t *ctx, snd_memory_protect_region_cb cb,
+                                                     void *user_ctx);
+
+/**
+ * @brief Resolves a COFF entry-point symbol offset relative to the mapped image base.
+ * @param ctx The mapped COFF loader context.
+ * @param entry_name Entry symbol name; NULL defaults to `"go"`.
+ * @param offset_out Receives the byte offset relative to `local_base` / `execution_base`.
+ * @retval SND_OK On success.
+ * @retval SND_STATUS_NULL_POINTER If @p ctx, @p offset_out, or mapped pointers are NULL.
+ * @retval SND_STATUS_COFF_LOADER_ENTRY_POINT_INVALID If the symbol section or offset is invalid.
+ * @retval Any error returned by `snd_coff_find_symbol_by_name`.
+ */
+snd_status_t snd_ldr_coff_resolve_entry_offset(const snd_ldr_coff_ctx_t *ctx, const char *entry_name,
+                                               SIZE_T *offset_out);
+
+/**
  * @brief Applies final memory protections based on section characteristics.
  * @param ctx The loader context.
  * @retval SND_OK On success.
  * @retval SND_STATUS_NULL_POINTER If @p ctx, the memory API, or its
  * `protect` callback is NULL.
  * @retval SND_STATUS_INVALID_STAGE If the loader stage is invalid.
+ * @retval SND_STATUS_CORRUPTED_STAGE If `allocated_size` is zero.
  * @retval Any error returned by `snd_memory_api_t::protect`.
  */
 snd_status_t snd_ldr_coff_apply_memory_protections(snd_ldr_coff_ctx_t *ctx);

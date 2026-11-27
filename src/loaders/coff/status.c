@@ -21,6 +21,14 @@ const char *snd_ldr_coff_status_to_string(int code) {
         return "COFF trampoline allocation failed due to insufficient space";
     case SND_STATUS_COFF_LOADER_VIRTUAL_SIZE_OVERFLOW:
         return "COFF virtual allocation size calculation overflow";
+    case SND_STATUS_COFF_LOADER_NO_SECTIONS:
+        return "COFF object contains no sections to map";
+    case SND_STATUS_COFF_LOADER_SECTION_TRUNCATED:
+        return "COFF section raw data extends beyond source buffer";
+    case SND_STATUS_COFF_LOADER_LOCAL_EXECUTION_BLOCKED:
+        return "Local COFF execution is blocked for remotely prepared images";
+    case SND_STATUS_COFF_LOADER_ENTRY_POINT_INVALID:
+        return "COFF entry point symbol section or offset is invalid";
 
     default:
         return "Unknown COFF loader status code";

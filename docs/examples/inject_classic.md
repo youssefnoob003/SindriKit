@@ -97,7 +97,7 @@ The chain interleaves local loader fixups with remote allocation:
 2. Open the target and allocate a remote RW region.
 3. Point the loader at the remote base, then apply relocations and resolve imports locally.
 4. Write the baked image to the target.
-5. Protect the region RX and set the remote entry to the entry-point VA.
+5. Apply per-section memory protections remotely (headers `RO`, `.text` `RX`, `.data`/`.bss` `RW`) and set the remote entry to the entry-point VA.
 6. Create the remote thread.
 
 The remote thread starts at `AddressOfEntryPoint` (typically `DllMain` for DLL payloads). The chain does **not** run the loader's local TLS/DllMain path.
@@ -124,7 +124,6 @@ snd_ldr_coff_free_mapped_image(&ldr);
 
 ## What these chains do not do
 
-- No per-section remote protections; PE mode uses a flat `PAGE_EXECUTE_READ` on the image.
 - No TLS callbacks in the remote PE path.
 - No suspension or process creation — `inject apc` covers the spawn-suspended flow.
 

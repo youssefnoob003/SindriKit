@@ -1,6 +1,8 @@
 #ifndef SND_INTERNAL_WINDOWS_IMAGE_H
 #define SND_INTERNAL_WINDOWS_IMAGE_H
 
+#include <sindri/common/macros.h>
+#include <sindri/internal/windows/constants.h>
 #include <sindri/internal/windows/types.h>
 
 #define SND_IMAGE_DOS_SIGNATURE     0x5A4D
@@ -66,5 +68,33 @@ typedef struct _SND_IMAGE_SECTION_HEADER {
 #define SND_IMAGE_SCN_MEM_EXECUTE 0x20000000
 #define SND_IMAGE_SCN_MEM_READ    0x40000000
 #define SND_IMAGE_SCN_MEM_WRITE   0x80000000
+
+SND_BEGIN_EXTERN_C
+
+/**
+ * @brief Maps PE/COFF section memory characteristic flags to `SND_PAGE_*` protection flags.
+ * @param characteristics Combination of `SND_IMAGE_SCN_MEM_*` flags.
+ * @retval Equivalent `SND_PAGE_*` constant (`SND_PAGE_NOACCESS` if none are set).
+ */
+SND_FORCE_INLINE DWORD snd_image_characteristics_to_protect(DWORD characteristics) {
+    static const DWORD protect_lookup[8] = {
+        SND_PAGE_NOACCESS,          // 000: No access flags set
+        SND_PAGE_READWRITE,         // 001: Write-only (Windows elevates to RW)
+        SND_PAGE_READONLY,          // 010: Read-only
+        SND_PAGE_READWRITE,         // 011: Read/Write
+        SND_PAGE_EXECUTE,           // 100: Execute-only
+        SND_PAGE_EXECUTE_READWRITE, // 101: Execute/Write (Windows elevates to ERW)
+        SND_PAGE_EXECUTE_READ,      // 110: Execute/Read
+        SND_PAGE_EXECUTE_READWRITE  // 111: Execute/Read/Write
+    };
+
+    DWORD index = ((characteristics & SND_IMAGE_SCN_MEM_EXECUTE) ? 4 : 0) |
+                  ((characteristics & SND_IMAGE_SCN_MEM_READ) ? 2 : 0) |
+                  ((characteristics & SND_IMAGE_SCN_MEM_WRITE) ? 1 : 0);
+
+    return protect_lookup[index];
+}
+
+SND_END_EXTERN_C
 
 #endif /* SND_INTERNAL_WINDOWS_IMAGE_H */

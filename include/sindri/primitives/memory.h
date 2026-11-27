@@ -7,6 +7,15 @@
 
 SND_BEGIN_EXTERN_C
 
+/**
+ * @brief Callback invoked for each contiguous memory protection region.
+ * @param offset Byte offset relative to the allocation or image base.
+ * @param size Size of the region in bytes.
+ * @param protect `SND_PAGE_*` protection flags for the region.
+ * @param user_ctx Caller-supplied context pointer.
+ */
+typedef snd_status_t (*snd_memory_protect_region_cb)(SIZE_T offset, SIZE_T size, DWORD protect, void *user_ctx);
+
 // Expose globally available, ready-to-use WinAPI capabilities
 extern const snd_memory_api_t snd_mem_win;
 extern const snd_memory_api_t snd_mem_nt;

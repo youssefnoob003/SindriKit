@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [2.4.0] - 2026-11-27
+
+Tenth minor release. Introduces per-section remote memory protections for injected PE and COFF payloads, unifies local/remote protection planning, tightens loader/injection validation, removes dead code and unused API hashes, and fixes x86 SAFESEH builds.
+
+### Breaking Changes
+- Removed unused status codes (`SND_STATUS_THREAD_EXIT_FAILED`, `SND_STATUS_SECTION_OFFSET_OVERFLOW`, `SND_STATUS_SYMBOL_RESOLUTION_FAILED`, `SND_STATUS_STRING_TABLE_OVERFLOW`, `SND_STATUS_COFF_RELOCATION_PATCH_OUT_OF_RANGE`) and unused internal types/macros/hashes (`SND_NtOpenThread_t`, `SND_PROCESS_CREATE_FLAGS_SUSPENDED`, `SND_ULARGE_INTEGER`, duplicate `SND_IMAGE_ORDINAL*` macros, and 12 unused `ntdll.dll`/`kernel32.dll` hashes in `config/hashes.ini`).
+- `snd_inj_prepare_pe` now rejects missing or out-of-image `AddressOfEntryPoint` values (`SND_STATUS_IMAGE_ENTRY_POINT_MISSING`), and `snd_inj_prepare_coff` enforces upfront architecture compatibility (`SND_IS_ARCH_COMPATIBLE`) and bounds-checked entry-symbol resolution (`snd_ldr_coff_resolve_entry_offset`).
+- `snd_ldr_coff_execute_image` now requires `SND_COFF_STAGE_READY_FOR_EXECUTION` and rejects remotely relocated images (`local_base != execution_base`) with `SND_STATUS_COFF_LOADER_LOCAL_EXECUTION_BLOCKED`.
+
+### Major Additions
+- **Remote Per-Section Protections:** Added `snd_inj_protect_plan_cb` and `snd_inj_set_protections_with_plan` (`sindri/injection/common/staging.h`), replacing flat `PAGE_EXECUTE_READ` remote protections for injected PE and COFF payloads across `classic`, `apc`, and `hijack` paths.
+- **Shared Protection Planning:** Added `snd_memory_protect_region_cb` (`sindri/primitives/memory.h`), `snd_image_characteristics_to_protect` (`sindri/internal/windows/image.h`), `snd_ldr_pe_for_each_protection_region`, and `snd_ldr_coff_for_each_protection_region` so local loaders and remote injection share one section-protection implementation.
+- **COFF Loader Hardening:** Added `SND_STATUS_COFF_LOADER_NO_SECTIONS`, `SND_STATUS_COFF_LOADER_SECTION_TRUNCATED`, `SND_STATUS_COFF_LOADER_LOCAL_EXECUTION_BLOCKED`, and `SND_STATUS_COFF_LOADER_ENTRY_POINT_INVALID`; local COFF staging now allocates `SND_PAGE_READWRITE` before finalizing protections.
+- **Tests:** Added mutable `.data`/`.bss` and COFF common `bss_base` probes to `test_inject_marker_dll` and `test_inject_marker_bof`, plus `test_page_protection_flags` and 6 injection/COFF guard unit tests.
+
+### Fixed
+- **x86 MSVC Build:** Enabled `/safeseh` on x86 MASM objects in `CMakeLists.txt` (fixing `LNK2026`/`LNK1281` on `snd_unit_tests.exe` and `unified.exe`), removed duplicate `WINUSERAPI` in `test_coff_user32.c` (`C4141`), and suppressed expected `LNK4086` on `test_inject_marker_x86.dll`.
+- **Correctness & Cleanup:** Fixed truncated raw COFF section handling (preserving zero-filled `.bss`), clamped PE protection runs to `virtual_size`, extracted shared `snd_nt_build_dos_path_a`/`snd_nt_build_dos_path_w` helpers, and fixed `"Unkown error code"` in `src/status/generic.c`.
+
+---
+
 ## [2.3.1] - 2026-09-20
 
 Patch release fixing x64 thread-hijack stack-frame alignment.

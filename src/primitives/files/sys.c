@@ -1,4 +1,5 @@
 #include <sindri/common/string.h>
+#include <sindri/internal/nt/base.h>
 #include <sindri/internal/nt/file.h>
 #include <sindri/primitives/files.h>
 #include <sindri/primitives/memory.h>
@@ -22,27 +23,13 @@ static snd_status_t sys_close_file(HANDLE file) {
     return SND_OK;
 }
 
-static snd_status_t sys_build_path(const char *path, wchar_t *wide_path, SIZE_T wide_path_count) {
-    SND_CHECK_NULL(path, wide_path);
-
-    if (wide_path_count <= 4) {
-        return SND_ERR(SND_STATUS_INVALID_PARAMETERS_COMBINATION);
-    }
-
-    size_t path_len = snd_strnlen(path, wide_path_count - 4);
-    snd_ascii_to_wide(wide_path + 4, wide_path_count - 4, path, path_len);
-    wide_path[0] = L'\\';
-    wide_path[1] = L'?';
-    wide_path[2] = L'?';
-    wide_path[3] = L'\\';
-    return SND_OK;
-}
-
 static snd_status_t WINAPI sys_load(const char *path, snd_buffer_t *out_buf) {
     SND_CHECK_NULL(path, out_buf);
 
     wchar_t wide_path[SND_MAX_PATH] = {0};
-    SND_TRY(sys_build_path(path, wide_path, SND_MAX_PATH));
+    if (!snd_nt_build_dos_path_a(path, wide_path, SND_MAX_PATH)) {
+        return SND_ERR(SND_STATUS_FILE_INVALID_PATH);
+    }
 
     SND_UNICODE_STRING name = {0};
     snd_init_unicode_string(&name, wide_path, snd_wcsnlen(wide_path, SND_MAX_PATH));

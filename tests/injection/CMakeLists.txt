@@ -24,6 +24,11 @@ add_library(test_inject_marker_bof OBJECT src/test_inject_marker_bof.c)
 # both architectures (the x86 linker applies the leading underscore itself).
 target_compile_options(test_inject_marker_dll PRIVATE /GS- /Od /Gs2147483647)
 target_link_options(test_inject_marker_dll PRIVATE "/ENTRY:snd_marker_entry" /NODEFAULTLIB)
+if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+    # snd_marker_entry is intentionally void(void) (not DllMain __stdcall@12)
+    # because injection invokes the entry point directly rather than via LdrLoadDll.
+    target_link_options(test_inject_marker_dll PRIVATE /IGNORE:4086)
+endif()
 
 target_compile_options(test_inject_marker_bof PRIVATE /GS- /Zc:threadSafeInit- /Gy /Od)
 

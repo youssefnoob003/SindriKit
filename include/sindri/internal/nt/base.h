@@ -2,6 +2,7 @@
 #define SND_INTERNAL_NT_BASE_H
 
 #include <sindri/common/macros.h>
+#include <sindri/common/string.h>
 #include <sindri/internal/windows/types.h>
 
 SND_BEGIN_EXTERN_C
@@ -28,7 +29,7 @@ SND_BEGIN_EXTERN_C
 #define SND_KUSER_SHARED_DATA_SYSTEM_TIME 0x7FFE0014
 
 /**
- * @brief Page size used in memory allocations.
+ * @brief Maximum character capacity of an NT `UNICODE_STRING` buffer.
  */
 #define SND_UNICODE_STRING_MAX_CHARS 32768
 #define SND_SECTION_MAP_READ         0x0004
@@ -89,6 +90,50 @@ SND_FORCE_INLINE void snd_init_unicode_string(SND_UNICODE_STRING *us, const wcha
         us->Length        = (USHORT)(char_count * sizeof(wchar_t));
         us->MaximumLength = us->Length + sizeof(wchar_t);
     }
+}
+
+/**
+ * @brief Prefixes an ASCII DOS path with `\\??\\` as a null-terminated wide NT object path.
+ */
+SND_FORCE_INLINE BOOL snd_nt_build_dos_path_a(const char *path, wchar_t *wide_path, size_t wide_path_count) {
+    if (!path || !wide_path || wide_path_count <= 4) {
+        return FALSE;
+    }
+
+    size_t max_chars = wide_path_count - 4;
+    size_t path_len  = snd_strnlen(path, max_chars);
+    if (path_len == 0 || path_len >= max_chars) {
+        return FALSE;
+    }
+
+    wide_path[0] = L'\\';
+    wide_path[1] = L'?';
+    wide_path[2] = L'?';
+    wide_path[3] = L'\\';
+    snd_ascii_to_wide(wide_path + 4, max_chars, path, path_len);
+    return TRUE;
+}
+
+/**
+ * @brief Prefixes a wide DOS path with `\\??\\` as a null-terminated wide NT object path.
+ */
+SND_FORCE_INLINE BOOL snd_nt_build_dos_path_w(const wchar_t *path, wchar_t *wide_path, size_t wide_path_count) {
+    if (!path || !wide_path || wide_path_count <= 4) {
+        return FALSE;
+    }
+
+    size_t max_chars = wide_path_count - 4;
+    size_t path_len  = snd_wcsnlen(path, max_chars);
+    if (path_len == 0 || path_len >= max_chars) {
+        return FALSE;
+    }
+
+    wide_path[0] = L'\\';
+    wide_path[1] = L'?';
+    wide_path[2] = L'?';
+    wide_path[3] = L'\\';
+    snd_wcsncpy(wide_path + 4, max_chars, path, path_len);
+    return TRUE;
 }
 
 SND_END_EXTERN_C

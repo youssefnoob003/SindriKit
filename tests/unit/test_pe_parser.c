@@ -217,6 +217,46 @@ static void test_parse_tls_callbacks(void) {
     snd_test_pe_free(&img);
 }
 
+static void test_page_protection_flags(void) {
+    CHECK_EQ_U32(snd_image_characteristics_to_protect(0), SND_PAGE_NOACCESS);
+    CHECK_EQ_U32(snd_image_characteristics_to_protect(SND_IMAGE_SCN_MEM_WRITE), SND_PAGE_READWRITE);
+    CHECK_EQ_U32(snd_image_characteristics_to_protect(SND_IMAGE_SCN_MEM_READ), SND_PAGE_READONLY);
+    CHECK_EQ_U32(snd_image_characteristics_to_protect(SND_IMAGE_SCN_MEM_READ | SND_IMAGE_SCN_MEM_WRITE),
+                 SND_PAGE_READWRITE);
+    CHECK_EQ_U32(snd_image_characteristics_to_protect(SND_IMAGE_SCN_MEM_EXECUTE), SND_PAGE_EXECUTE);
+    CHECK_EQ_U32(snd_image_characteristics_to_protect(SND_IMAGE_SCN_MEM_EXECUTE | SND_IMAGE_SCN_MEM_WRITE),
+                 SND_PAGE_EXECUTE_READWRITE);
+    CHECK_EQ_U32(snd_image_characteristics_to_protect(SND_IMAGE_SCN_MEM_EXECUTE | SND_IMAGE_SCN_MEM_READ),
+                 SND_PAGE_EXECUTE_READ);
+    CHECK_EQ_U32(snd_image_characteristics_to_protect(SND_IMAGE_SCN_MEM_EXECUTE | SND_IMAGE_SCN_MEM_READ |
+                                                      SND_IMAGE_SCN_MEM_WRITE),
+                 SND_PAGE_EXECUTE_READWRITE);
+
+    CHECK_EQ_U32(snd_pe_get_page_protection_flags(NULL, 0), SND_PAGE_NOACCESS);
+
+    snd_test_pe_spec_t spec = {.is_64bit = 1, .is_mapped = 1};
+    snd_test_pe_t      img  = {0};
+    CHECK_EQ_INT(snd_test_pe_build(&img, &spec), 0);
+    unsigned char code[16] = {0xC3};
+    (void)snd_test_pe_add_region(&img, code, sizeof(code));
+    CHECK_EQ_INT(snd_test_pe_finalize(&img), 0);
+
+    /* Switch the single section to EXECUTE | READ and verify headers, section, and gap page. */
+    size_t sec_off = SND_TEST_PE_LFANEW + sizeof(DWORD) + sizeof(SND_IMAGE_FILE_HEADER) +
+                     sizeof(SND_IMAGE_OPTIONAL_HEADER64);
+    PSND_IMAGE_SECTION_HEADER sec = (PSND_IMAGE_SECTION_HEADER)(snd_test_pe_data(&img) + sec_off);
+    sec->Characteristics          = SND_IMAGE_SCN_MEM_EXECUTE | SND_IMAGE_SCN_MEM_READ;
+
+    snd_buffer_t    buf = snd_test_pe_as_buffer(&img);
+    snd_pe_parser_t pe  = {0};
+    SND_CHECK_SUCCEEDED(snd_pe_parse(&buf, TRUE, &pe));
+    CHECK_EQ_U32(snd_pe_get_page_protection_flags(&pe, 0), SND_PAGE_READONLY);
+    CHECK_EQ_U32(snd_pe_get_page_protection_flags(&pe, SND_TEST_PE_SEC_BASE), SND_PAGE_EXECUTE_READ);
+    CHECK_EQ_U32(snd_pe_get_page_protection_flags(&pe, 0x3000), SND_PAGE_NOACCESS);
+
+    snd_test_pe_free(&img);
+}
+
 void snd_test_register_pe_parser(void) {
     snd_test_register("pe parser: happy path raw PE32+", test_parse_happy_path_raw64);
     snd_test_register("pe parser: happy path raw PE32", test_parse_happy_path_raw32);
@@ -232,4 +272,5 @@ void snd_test_register_pe_parser(void) {
     snd_test_register("pe parser: truncated NT headers", test_parse_truncated_nt_headers);
     snd_test_register("pe parser: entry point resolution", test_parse_entry_point);
     snd_test_register("pe parser: TLS callbacks", test_parse_tls_callbacks);
+    snd_test_register("pe parser: page protection flags", test_page_protection_flags);
 }

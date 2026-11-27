@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(SindriKit VERSION 2.3.1 LANGUAGES C ASM_MASM)
+project(SindriKit VERSION 2.4.0 LANGUAGES C ASM_MASM)
 
 message(STATUS "SindriKit ${PROJECT_VERSION}")
 
@@ -338,6 +338,13 @@ if(MSVC)
         $<$<COMPILE_LANGUAGE:C>:/W4>
         $<$<COMPILE_LANGUAGE:C>:/WX>
     )
+    if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+        # Mark x86 MASM objects SAFESEH-compatible so x86 Release consumers
+        # can link with /SAFESEH (none of the x86 stubs register SEH handlers).
+        target_compile_options(sindri_engine PRIVATE
+            $<$<COMPILE_LANGUAGE:ASM_MASM>:/safeseh>
+        )
+    endif()
     if(NOT SND_ENABLE_DEBUG)
         target_compile_options(sindri_engine PRIVATE
             $<$<COMPILE_LANGUAGE:C>:/GS->

@@ -6,7 +6,6 @@
 #include <sindri/loaders/pe/status.h>
 
 typedef BOOL(WINAPI *snd_dll_entry_proc_t)(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved);
-typedef void(WINAPI *snd_export_proc_t)(LPVOID, LPVOID, LPVOID, LPVOID);
 typedef void (*snd_exe_entry_proc_t)(void);
 
 void snd_ldr_pe_detach_image(snd_ldr_pe_ctx_t *ctx) {

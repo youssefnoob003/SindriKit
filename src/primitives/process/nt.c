@@ -53,8 +53,10 @@ static snd_status_t WINAPI nt_create_process(const snd_process_api_t *api, const
     SND_UNICODE_STRING u_win32_path = {0};
     snd_init_unicode_string(&u_win32_path, image_path, snd_wcsnlen(image_path, SND_UNICODE_STRING_MAX_CHARS));
 
-    wchar_t nt_path[SND_MAX_PATH] = L"\\??\\";
-    snd_wcsncpy(nt_path + 4, SND_MAX_PATH - 4, image_path, SND_MAX_PATH - 4);
+    wchar_t nt_path[SND_MAX_PATH] = {0};
+    if (!snd_nt_build_dos_path_w(image_path, nt_path, SND_MAX_PATH)) {
+        return SND_ERR(SND_STATUS_FILE_INVALID_PATH);
+    }
 
     SND_UNICODE_STRING u_nt_path = {0};
     snd_init_unicode_string(&u_nt_path, nt_path, snd_wcsnlen(nt_path, SND_UNICODE_STRING_MAX_CHARS));

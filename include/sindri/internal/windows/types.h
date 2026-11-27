@@ -78,15 +78,7 @@ typedef union _SND_LARGE_INTEGER {
     LONGLONG QuadPart;
 } SND_LARGE_INTEGER, *PSND_LARGE_INTEGER;
 
-typedef union _SND_ULARGE_INTEGER {
-    struct {
-        DWORD LowPart;
-        DWORD HighPart;
-    } u;
-    ULONGLONG QuadPart;
-} SND_ULARGE_INTEGER, *PSND_ULARGE_INTEGER;
-
-#define SND_MAX_PATH  260
+#define SND_MAX_PATH 260
 #define SND_MAX_WORD  ((WORD)0xffff)
 #define SND_MAX_DWORD ((DWORD)0xffffffffUL)
 

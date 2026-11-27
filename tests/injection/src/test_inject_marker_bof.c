@@ -11,11 +11,25 @@ DECLSPEC_IMPORT BOOL WINAPI   KERNEL32$WriteFile(HANDLE hFile, LPCVOID lpBuffer,
                                                  LPDWORD lpNumberOfBytesWritten, LPOVERLAPPED lpOverlapped);
 DECLSPEC_IMPORT BOOL WINAPI   KERNEL32$CloseHandle(HANDLE hObject);
 
+/* Mutable .data, static .bss, and common BSS globals verify that remote COFF
+ * injection marks both section data and COFF bss_base writable. */
+static volatile DWORD g_snd_data_probe = 1;
+static volatile DWORD g_snd_static_bss;
+volatile DWORD        g_snd_common_bss[2];
+
 static void snd_write_marker(void) {
     static const char content[] = "SND_INJECT_OK";
     char              exe[MAX_PATH];
     DWORD             written = 0;
     HANDLE            h;
+
+    g_snd_data_probe += 1;
+    g_snd_static_bss += 2;
+    g_snd_common_bss[0] = 3;
+    g_snd_common_bss[1] = 4;
+    if (g_snd_data_probe != 2 || g_snd_static_bss != 2 || g_snd_common_bss[0] != 3 || g_snd_common_bss[1] != 4) {
+        return;
+    }
 
     DWORD n = KERNEL32$GetModuleFileNameA(NULL, exe, sizeof(exe));
     if (n == 0 || n >= sizeof(exe)) {

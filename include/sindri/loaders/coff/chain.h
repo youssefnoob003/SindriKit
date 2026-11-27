@@ -23,6 +23,7 @@ SND_BEGIN_EXTERN_C
  *                On success, contains the fully loaded COFF execution state.
  * @retval SND_OK On success.
  * @retval SND_STATUS_NULL_POINTER If @p ctx_out is NULL.
+ * @retval SND_STATUS_ARCH_MISMATCH If the COFF object architecture is incompatible.
  * @retval Any error returned by `snd_coff_parse`,
  * `snd_ldr_coff_allocate_and_copy_sections`,
  * `snd_ldr_coff_resolve_symbols`, `snd_ldr_coff_apply_relocations`, or
@@ -36,13 +37,18 @@ snd_status_t snd_ldr_coff_load(snd_ldr_coff_ctx_t *ctx_out);
  * @brief Executes the loaded COFF image.
  *
  * @param ctx Loader context containing the loaded COFF image.
- * @param entry_name Name of the entry point symbol to execute.
+ * @param entry_name Name of the entry point symbol to execute; NULL defaults to `"go"`.
  * @param bof_args Arguments to pass to the entry point.
  * @param bof_arg_len Length of the bof_args buffer.
  * @retval SND_OK On success.
  * @retval SND_STATUS_NULL_POINTER If @p ctx is NULL.
+ * @retval SND_STATUS_INVALID_STAGE If the image is not ready for execution.
+ * @retval SND_STATUS_COFF_LOADER_LOCAL_EXECUTION_BLOCKED If the image was
+ * prepared for a remote base.
  * @retval SND_STATUS_ARCH_MISMATCH If the COFF image architecture is
  * incompatible.
+ * @retval SND_STATUS_COFF_LOADER_ENTRY_POINT_INVALID If the entry symbol
+ * section or offset is invalid.
  * @retval Any error returned by `snd_coff_find_symbol_by_name`.
  */
 snd_status_t snd_ldr_coff_execute_image(snd_ldr_coff_ctx_t *ctx, const char *entry_name, char *bof_args,

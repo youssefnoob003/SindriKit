@@ -10,25 +10,6 @@
 #include <sindri/parsers/pe/status.h>
 #include <sindri/parsers/pe/utils.h>
 
-SND_FORCE_INLINE DWORD get_protection_flags(DWORD characteristics) {
-    static const DWORD protect_lookup[8] = {
-        SND_PAGE_NOACCESS,          // 000: No access flags set
-        SND_PAGE_READWRITE,         // 001: Write-only (Windows elevates to RW)
-        SND_PAGE_READONLY,          // 010: Read-only
-        SND_PAGE_READWRITE,         // 011: Read/Write
-        SND_PAGE_EXECUTE,           // 100: Execute-only
-        SND_PAGE_EXECUTE_READWRITE, // 101: Execute/Write (Windows elevates to ERW)
-        SND_PAGE_EXECUTE_READ,      // 110: Execute/Read
-        SND_PAGE_EXECUTE_READWRITE  // 111: Execute/Read/Write
-    };
-
-    DWORD index = ((characteristics & SND_IMAGE_SCN_MEM_EXECUTE) ? 4 : 0) |
-                  ((characteristics & SND_IMAGE_SCN_MEM_READ) ? 2 : 0) |
-                  ((characteristics & SND_IMAGE_SCN_MEM_WRITE) ? 1 : 0);
-
-    return protect_lookup[index];
-}
-
 snd_status_t snd_pe_get_directory(const snd_pe_parser_t *parser, DWORD index, SND_IMAGE_DATA_DIRECTORY *dir_out) {
     SND_CHECK_NULL(parser, dir_out);
 
@@ -220,6 +201,10 @@ PVOID snd_pe_get_tls_callbacks(const snd_pe_parser_t *parser) {
 }
 
 DWORD snd_pe_get_page_protection_flags(const snd_pe_parser_t *pe, SIZE_T page_offset) {
+    if (!pe || !pe->nt.nt32) {
+        return SND_PAGE_NOACCESS;
+    }
+
     DWORD flags        = 0;
     DWORD headers_size = SND_PE_GET_NT_FIELD(pe, OptionalHeader.SizeOfHeaders);
 
@@ -230,21 +215,23 @@ DWORD snd_pe_get_page_protection_flags(const snd_pe_parser_t *pe, SIZE_T page_of
     SIZE_T page_end =
         SND_ADD_OVERFLOWS_SIZET(page_offset, SND_PAGE_SIZE) ? SND_MAX_SIZE_T : page_offset + SND_PAGE_SIZE;
 
-    for (DWORD i = 0; i < pe->sections_count; i++) {
-        PSND_IMAGE_SECTION_HEADER section     = &pe->section_head[i];
-        SIZE_T                    loaded_size = (SIZE_T)snd_pe_section_loaded_size(section);
-        if (loaded_size == 0)
-            continue;
+    if (pe->section_head != NULL) {
+        for (DWORD i = 0; i < pe->sections_count; i++) {
+            PSND_IMAGE_SECTION_HEADER section     = &pe->section_head[i];
+            SIZE_T                    loaded_size = (SIZE_T)snd_pe_section_loaded_size(section);
+            if (loaded_size == 0)
+                continue;
 
-        SIZE_T section_start = (SIZE_T)section->VirtualAddress;
-        SIZE_T section_end =
-            SND_ADD_OVERFLOWS_SIZET(section_start, loaded_size) ? SND_MAX_SIZE_T : section_start + loaded_size;
+            SIZE_T section_start = (SIZE_T)section->VirtualAddress;
+            SIZE_T section_end =
+                SND_ADD_OVERFLOWS_SIZET(section_start, loaded_size) ? SND_MAX_SIZE_T : section_start + loaded_size;
 
-        if (section_start < page_end && section_end > page_offset) {
-            flags |= (section->Characteristics &
-                      (SND_IMAGE_SCN_MEM_EXECUTE | SND_IMAGE_SCN_MEM_READ | SND_IMAGE_SCN_MEM_WRITE));
+            if (section_start < page_end && section_end > page_offset) {
+                flags |= (section->Characteristics &
+                          (SND_IMAGE_SCN_MEM_EXECUTE | SND_IMAGE_SCN_MEM_READ | SND_IMAGE_SCN_MEM_WRITE));
+            }
         }
     }
 
-    return get_protection_flags(flags);
+    return snd_image_characteristics_to_protect(flags);
 }

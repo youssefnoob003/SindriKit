@@ -5,6 +5,7 @@
 #include <sindri/common/macros.h>
 #include <sindri/internal/windows/types.h>
 #include <sindri/parsers/pe/parser.h>
+#include <sindri/primitives/memory.h>
 #include <sindri/primitives/os_api.h>
 #include <sindri/status/core.h>
 
@@ -164,6 +165,20 @@ snd_status_t snd_ldr_pe_apply_relocations(snd_ldr_pe_ctx_t *ctx);
  * `snd_module_api_t::get_proc_address`.
  */
 snd_status_t snd_ldr_pe_resolve_imports(snd_ldr_pe_ctx_t *ctx);
+
+/**
+ * @brief Enumerates merged page-protection runs for a mapped PE image.
+ * @param pe Initialized PE parser context.
+ * @param virtual_size Total virtual image size (`SizeOfImage`).
+ * @param cb Callback invoked once per contiguous page-protection run.
+ * @param user_ctx Caller-supplied context forwarded to @p cb.
+ * @retval SND_OK On success.
+ * @retval SND_STATUS_NULL_POINTER If @p pe or @p cb is NULL.
+ * @retval SND_STATUS_IMAGE_SIZE_NULL If @p virtual_size is zero.
+ * @retval Any error returned by @p cb.
+ */
+snd_status_t snd_ldr_pe_for_each_protection_region(const snd_pe_parser_t *pe, SIZE_T virtual_size,
+                                                   snd_memory_protect_region_cb cb, void *user_ctx);
 
 /**
  * @brief Applies final section page protections.

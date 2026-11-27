@@ -154,14 +154,8 @@ typedef struct _SND_IMAGE_THUNK_DATA32 {
     } u1;
 } SND_IMAGE_THUNK_DATA32, *PSND_IMAGE_THUNK_DATA32;
 
-#define SND_IMAGE_ORDINAL_FLAG64             0x8000000000000000ull
-#define SND_IMAGE_ORDINAL_FLAG32             0x80000000
-#define SND_IMAGE_ORDINAL64(Ordinal)         (Ordinal & 0xffff)
-#define SND_IMAGE_ORDINAL32(Ordinal)         (Ordinal & 0xffff)
-#define SND_IMAGE_SNAP_BY_ORDINAL64(Ordinal) ((Ordinal & SND_IMAGE_ORDINAL_FLAG64) != 0)
-#define SND_IMAGE_SNAP_BY_ORDINAL32(Ordinal) ((Ordinal & SND_IMAGE_ORDINAL_FLAG32) != 0)
-#define SND_IS_INTRESOURCE(value)            (((ULONG_PTR)(value) >> 16) == 0)
-#define SND_MAKEINTRESOURCE(value)           ((const char *)(ULONG_PTR)(value))
+#define SND_IS_INTRESOURCE(value)  (((ULONG_PTR)(value) >> 16) == 0)
+#define SND_MAKEINTRESOURCE(value) ((const char *)(ULONG_PTR)(value))
 
 typedef struct _SND_IMAGE_IMPORT_BY_NAME {
     WORD Hint;

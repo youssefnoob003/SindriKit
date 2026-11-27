@@ -119,7 +119,7 @@ Optional post-load export calls in PoCs use `snd_ldr_pe_get_proc_address` + `snd
 | `SND_INJ_STAGE_TARGET_ACQUIRED` | `snd_inj_open_target` / `snd_inj_create_suspended_target` | `target_process` handle valid |
 | `SND_INJ_STAGE_MEMORY_ALLOCATED` | `snd_inj_alloc_remote` / `snd_inj_alloc_remote_size` | `remote_base` allocated |
 | `SND_INJ_STAGE_PAYLOAD_WRITTEN` | `snd_inj_write_payload` | Bytes copied to target |
-| `SND_INJ_STAGE_PROTECTIONS_SET` | `snd_inj_set_protections` | Typically `PAGE_EXECUTE_READ` |
+| `SND_INJ_STAGE_PROTECTIONS_SET` | `snd_inj_set_protections` / `snd_inj_set_protections_with_plan` | Flat `PAGE_EXECUTE_READ` for shellcode; per-section protections for PE/COFF |
 | `SND_INJ_STAGE_CONTEXT_APPLIED` | `snd_inj_hijack_execute` | Thread context changed; resume is pending |
 | `SND_INJ_STAGE_EXECUTED` | `snd_inj_classic_execute` / `snd_inj_apc_execute` / `snd_inj_hijack_execute` | Execution was handed off |
 
@@ -147,7 +147,7 @@ set execution_base = remote_base
 apply_relocations (against remote base)
 resolve_imports
 write_payload (marshals local image → remote)
-set_protections
+set_protections_with_plan (per-section remote protections)
 execute (thread at remote entry RVA)
 ```
 
@@ -155,7 +155,7 @@ Notable differences from local reflective load:
 
 - No `snd_ldr_pe_prepare_image` / `snd_ldr_pe_execute_image` on the remote path
 - No TLS callbacks or DllMain in target — thread starts at entry RVA
-- No per-section protection pass on remote path (classic chain writes then sets execute-read on whole region)
+- `snd_inj_prepare_pe` applies the same merged page-protection runs as `snd_ldr_pe_apply_memory_protections` remotely via `proc_api->protect_remote`
 - `inj_ctx.remote_entry_point` is set to the **entry point VA** before `snd_inj_classic_execute`
 
 ---

@@ -1,9 +1,8 @@
 #include <sindri/common/debug.h>
 #include <sindri/common/macros.h>
 #include <sindri/common/memory.h>
-#include <sindri/common/string.h>
 #include <sindri/loaders/coff/chain.h>
-#include <sindri/parsers/coff/symbols.h>
+#include <sindri/loaders/coff/status.h>
 #include <sindri/status.h>
 #include <sindri/status/core.h>
 
@@ -18,6 +17,10 @@ snd_status_t snd_ldr_coff_load(snd_ldr_coff_ctx_t *ctx) {
 
     SND_TRY(snd_coff_parse(ctx->raw_source, &ctx->coff));
     ctx->stage = SND_COFF_STAGE_PARSED;
+
+    if (!SND_IS_ARCH_COMPATIBLE(ctx->coff.is_64bit)) {
+        return SND_ERR(SND_STATUS_ARCH_MISMATCH);
+    }
 
     status = snd_ldr_coff_allocate_and_copy_sections(ctx);
     if (SND_FAILED(status)) {
@@ -53,22 +56,29 @@ failure:
 snd_status_t snd_ldr_coff_execute_image(snd_ldr_coff_ctx_t *ctx, const char *entry_name, char *bof_args,
                                         int bof_arg_len) {
     SND_CHECK_NULL(ctx);
+
+    if (ctx->stage < SND_COFF_STAGE_READY_FOR_EXECUTION) {
+        return SND_ERR_CTX(SND_STATUS_INVALID_STAGE, "Sequence error: Expected stage >= %s, got %s.",
+                           snd_ldr_coff_stage_to_string(SND_COFF_STAGE_READY_FOR_EXECUTION),
+                           snd_ldr_coff_stage_to_string(ctx->stage));
+    }
+
+    if (ctx->target.local_base != ctx->target.execution_base) {
+        return SND_ERR_CTX(SND_STATUS_COFF_LOADER_LOCAL_EXECUTION_BLOCKED,
+                           "Cannot execute COFF locally. Image is configured for remote base: 0x%p",
+                           ctx->target.execution_base);
+    }
+
     if (!SND_IS_ARCH_COMPATIBLE(ctx->coff.is_64bit)) {
         return SND_ERR(SND_STATUS_ARCH_MISMATCH);
     }
 
-    const char *s                                = entry_name ? entry_name : "go";
-    char        ep_name[SND_COFF_MAX_SYMBOL_LEN] = {0};
+    SIZE_T ep_offset = 0;
+    SND_TRY(snd_ldr_coff_resolve_entry_offset(ctx, entry_name, &ep_offset));
 
-    size_t s_len = snd_strnlen(entry_name, SND_COFF_MAX_SYMBOL_LEN);
-    snd_strncpy(ep_name, SND_COFF_MAX_SYMBOL_LEN, s, s_len);
-
-    PSND_IMAGE_SYMBOL entry_sym = NULL;
-    SND_TRY(snd_coff_find_symbol_by_name(&ctx->coff, entry_name, s_len, &entry_sym, NULL));
-    LPVOID section_base = ctx->target.section_map[entry_sym->SectionNumber];
-
-    snd_coff_entry_t entry_func = (snd_coff_entry_t)(SND_PTR_ADD(section_base, entry_sym->Value));
+    snd_coff_entry_t entry_func = (snd_coff_entry_t)SND_PTR_ADD(ctx->target.local_base, ep_offset);
     entry_func(bof_args, bof_arg_len);
 
+    ctx->stage = SND_COFF_STAGE_EXECUTED;
     return SND_OK;
 }

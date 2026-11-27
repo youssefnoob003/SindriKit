@@ -142,20 +142,16 @@ static snd_status_t WINAPI sys_create_process(const snd_process_api_t *api, cons
     *out_process = NULL;
     *out_thread  = NULL;
 
-    size_t             img_len_chars = snd_wcsnlen(image_path, SND_UNICODE_STRING_MAX_CHARS);
-    SND_UNICODE_STRING u_win32_path  = {0};
-    u_win32_path.Length              = (USHORT)(img_len_chars * sizeof(wchar_t));
-    u_win32_path.MaximumLength       = u_win32_path.Length + sizeof(wchar_t);
-    u_win32_path.Buffer              = (PWSTR)image_path;
+    SND_UNICODE_STRING u_win32_path = {0};
+    snd_init_unicode_string(&u_win32_path, image_path, snd_wcsnlen(image_path, SND_UNICODE_STRING_MAX_CHARS));
 
-    wchar_t nt_path[SND_MAX_PATH] = L"\\??\\";
-    snd_wcsncpy(nt_path + 4, SND_MAX_PATH - 4, image_path, SND_MAX_PATH - 4);
+    wchar_t nt_path[SND_MAX_PATH] = {0};
+    if (!snd_nt_build_dos_path_w(image_path, nt_path, SND_MAX_PATH)) {
+        return SND_ERR(SND_STATUS_FILE_INVALID_PATH);
+    }
 
-    size_t             nt_len_chars = snd_wcsnlen(nt_path, SND_UNICODE_STRING_MAX_CHARS);
-    SND_UNICODE_STRING u_nt_path    = {0};
-    u_nt_path.Length                = (USHORT)(nt_len_chars * sizeof(wchar_t));
-    u_nt_path.MaximumLength         = u_nt_path.Length + sizeof(wchar_t);
-    u_nt_path.Buffer                = nt_path;
+    SND_UNICODE_STRING u_nt_path = {0};
+    snd_init_unicode_string(&u_nt_path, nt_path, snd_wcsnlen(nt_path, SND_UNICODE_STRING_MAX_CHARS));
 
     PVOID process_params = NULL;
     if (api && api->create_process_params) {

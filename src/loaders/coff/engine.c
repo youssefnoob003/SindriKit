@@ -2,6 +2,7 @@
 #include <sindri/common/macros.h>
 #include <sindri/common/memory.h>
 #include <sindri/common/opcodes.h>
+#include <sindri/common/string.h>
 #include <sindri/internal/nt/base.h>
 #include <sindri/internal/nt/process.h>
 #include <sindri/internal/windows/coff.h>
@@ -21,9 +22,8 @@ snd_status_t snd_ldr_coff_allocate_and_copy_sections(snd_ldr_coff_ctx_t *ctx) {
     }
 
     DWORD num_sections = ctx->coff.sections_count;
-    if (num_sections == 0) {
-        ctx->stage = SND_COFF_STAGE_SECTIONS_MAPPED;
-        return SND_OK;
+    if (num_sections == 0 || ctx->coff.section_head == NULL) {
+        return SND_ERR(SND_STATUS_COFF_LOADER_NO_SECTIONS);
     }
 
     SIZE_T ptr_size = sizeof(LPVOID);
@@ -73,12 +73,12 @@ snd_status_t snd_ldr_coff_allocate_and_copy_sections(snd_ldr_coff_ctx_t *ctx) {
     for (DWORD i = 0; i < num_sections; i++) {
         PSND_IMAGE_SECTION_HEADER sec = &ctx->coff.section_head[i];
 
-        SIZE_T sec_size = sec->SizeOfRawData;
-        if (sec->Misc.VirtualSize > sec_size) {
-            sec_size = sec->Misc.VirtualSize;
-        }
+        SIZE_T sec_size = SND_MAX((SIZE_T)sec->SizeOfRawData, (SIZE_T)sec->Misc.VirtualSize);
 
         if (sec_size > 0) {
+            if (SND_ADD_OVERFLOWS_SIZET(total_virtual_size, SND_PAGE_SIZE - 1)) {
+                return SND_ERR(SND_STATUS_COFF_LOADER_VIRTUAL_SIZE_OVERFLOW);
+            }
             total_virtual_size = SND_ALIGN_UP(total_virtual_size, SND_PAGE_SIZE);
             if (SND_ADD_OVERFLOWS_SIZET(total_virtual_size, sec_size)) {
                 return SND_ERR(SND_STATUS_COFF_LOADER_VIRTUAL_SIZE_OVERFLOW);
@@ -87,6 +87,9 @@ snd_status_t snd_ldr_coff_allocate_and_copy_sections(snd_ldr_coff_ctx_t *ctx) {
         }
     }
 
+    if (SND_ADD_OVERFLOWS_SIZET(total_virtual_size, SND_PAGE_SIZE - 1)) {
+        return SND_ERR(SND_STATUS_COFF_LOADER_VIRTUAL_SIZE_OVERFLOW);
+    }
     SIZE_T map_offset = SND_ALIGN_UP(total_virtual_size, SND_PAGE_SIZE);
 
     if (SND_ADD_OVERFLOWS_SIZET(section_map_size, symbol_map_size) ||
@@ -95,7 +98,12 @@ snd_status_t snd_ldr_coff_allocate_and_copy_sections(snd_ldr_coff_ctx_t *ctx) {
         return SND_ERR(SND_STATUS_COFF_LOADER_MAP_SIZE_OVERFLOW);
     }
 
-    SIZE_T rw_metadata_size    = section_map_size + symbol_map_size + iat_size + bss_size;
+    SIZE_T rw_metadata_size = section_map_size + symbol_map_size + iat_size + bss_size;
+    if (SND_ADD_OVERFLOWS_SIZET(rw_metadata_size, SND_PAGE_SIZE - 1) ||
+        SND_ADD_OVERFLOWS_SIZET(tramp_size, SND_PAGE_SIZE - 1)) {
+        return SND_ERR(SND_STATUS_COFF_LOADER_TRAMPOLINE_OVERFLOW);
+    }
+
     SIZE_T aligned_rw_metadata = SND_ALIGN_UP(rw_metadata_size, SND_PAGE_SIZE);
     SIZE_T aligned_tramp_size  = (tramp_size > 0) ? SND_ALIGN_UP(tramp_size, SND_PAGE_SIZE) : 0;
 
@@ -107,8 +115,7 @@ snd_status_t snd_ldr_coff_allocate_and_copy_sections(snd_ldr_coff_ctx_t *ctx) {
     SIZE_T total_alloc = map_offset + aligned_rw_metadata + aligned_tramp_size;
 
     LPVOID local_base = NULL;
-    SND_TRY(ctx->mem_api->alloc(NULL, total_alloc, SND_MEM_COMMIT | SND_MEM_RESERVE, SND_PAGE_EXECUTE_READWRITE,
-                                &local_base));
+    SND_TRY(ctx->mem_api->alloc(NULL, total_alloc, SND_MEM_COMMIT | SND_MEM_RESERVE, SND_PAGE_READWRITE, &local_base));
 
     ctx->target.local_base     = local_base;
     ctx->target.execution_base = local_base;
@@ -133,10 +140,7 @@ snd_status_t snd_ldr_coff_allocate_and_copy_sections(snd_ldr_coff_ctx_t *ctx) {
     for (DWORD i = 0; i < num_sections; i++) {
         PSND_IMAGE_SECTION_HEADER sec = &ctx->coff.section_head[i];
 
-        SIZE_T sec_size = sec->SizeOfRawData;
-        if (sec->Misc.VirtualSize > sec_size) {
-            sec_size = sec->Misc.VirtualSize;
-        }
+        SIZE_T sec_size = SND_MAX((SIZE_T)sec->SizeOfRawData, (SIZE_T)sec->Misc.VirtualSize);
 
         if (sec_size > 0) {
             current_offset = SND_ALIGN_UP(current_offset, SND_PAGE_SIZE);
@@ -144,11 +148,19 @@ snd_status_t snd_ldr_coff_allocate_and_copy_sections(snd_ldr_coff_ctx_t *ctx) {
             LPVOID dest                    = SND_PTR_ADD(local_base, current_offset);
             ctx->target.section_map[i + 1] = dest;
 
-            if (sec->SizeOfRawData > 0) {
+            /* COFF .bss sections set SizeOfRawData > 0 with PointerToRawData == 0.
+             * Only non-zero PointerToRawData denotes raw bytes in the object file. */
+            if (sec->SizeOfRawData > 0 && sec->PointerToRawData != 0) {
                 PVOID src = snd_coff_raw_to_ptr(&ctx->coff, sec->PointerToRawData, sec->SizeOfRawData);
-                if (src) {
-                    snd_memcpy(dest, src, sec->SizeOfRawData);
+                if (!src) {
+                    if (ctx->mem_api->free) {
+                        ctx->mem_api->free(local_base, 0, SND_MEM_RELEASE);
+                    }
+                    snd_memzero(&ctx->target, sizeof(ctx->target));
+                    ctx->stage = SND_COFF_STAGE_PARSED;
+                    return SND_ERR(SND_STATUS_COFF_LOADER_SECTION_TRUNCATED);
                 }
+                snd_memcpy(dest, src, sec->SizeOfRawData);
             }
 
             current_offset += sec_size;
@@ -363,6 +375,106 @@ snd_status_t snd_ldr_coff_apply_relocations(snd_ldr_coff_ctx_t *ctx) {
     return SND_OK;
 }
 
+typedef struct {
+    const snd_memory_api_t *mem_api;
+    LPVOID                  local_base;
+} snd_coff_local_protect_ctx_t;
+
+static snd_status_t coff_local_protect_cb(SIZE_T offset, SIZE_T size, DWORD protect, void *user_ctx) {
+    const snd_coff_local_protect_ctx_t *pctx        = (const snd_coff_local_protect_ctx_t *)user_ctx;
+    DWORD                               old_protect = 0;
+    return pctx->mem_api->protect(SND_PTR_ADD(pctx->local_base, offset), size, protect, &old_protect);
+}
+
+snd_status_t snd_ldr_coff_resolve_entry_offset(const snd_ldr_coff_ctx_t *ctx, const char *entry_name,
+                                               SIZE_T *offset_out) {
+    SND_CHECK_NULL(ctx, offset_out, ctx->target.local_base, ctx->target.section_map);
+
+    const char *name     = entry_name ? entry_name : "go";
+    size_t      name_len = snd_strnlen(name, SND_COFF_MAX_SYMBOL_LEN);
+
+    PSND_IMAGE_SYMBOL entry_sym = NULL;
+    SND_TRY(snd_coff_find_symbol_by_name(&ctx->coff, name, name_len, &entry_sym, NULL));
+
+    if (entry_sym->SectionNumber <= 0 || (DWORD)entry_sym->SectionNumber > ctx->coff.sections_count) {
+        return SND_ERR(SND_STATUS_COFF_LOADER_ENTRY_POINT_INVALID);
+    }
+
+    LPVOID section_base = ctx->target.section_map[entry_sym->SectionNumber];
+    if (!section_base) {
+        return SND_ERR(SND_STATUS_COFF_LOADER_ENTRY_POINT_INVALID);
+    }
+
+    PSND_IMAGE_SECTION_HEADER sec      = &ctx->coff.section_head[entry_sym->SectionNumber - 1];
+    SIZE_T                    sec_size = SND_MAX((SIZE_T)sec->SizeOfRawData, (SIZE_T)sec->Misc.VirtualSize);
+    if ((SIZE_T)entry_sym->Value >= sec_size) {
+        return SND_ERR(SND_STATUS_COFF_LOADER_ENTRY_POINT_INVALID);
+    }
+
+    *offset_out = SND_PTR_DIFF(SND_PTR_ADD(section_base, entry_sym->Value), ctx->target.local_base);
+    return SND_OK;
+}
+
+snd_status_t snd_ldr_coff_for_each_protection_region(const snd_ldr_coff_ctx_t *ctx, snd_memory_protect_region_cb cb,
+                                                     void *user_ctx) {
+    SND_CHECK_NULL(ctx, cb, ctx->target.local_base, ctx->target.section_map);
+
+    if (ctx->stage < SND_COFF_STAGE_RELOCATED) {
+        return SND_ERR_CTX(SND_STATUS_INVALID_STAGE, "Sequence error: Expected stage >= %s, got %s",
+                           snd_ldr_coff_stage_to_string(SND_COFF_STAGE_RELOCATED),
+                           snd_ldr_coff_stage_to_string(ctx->stage));
+    }
+
+    if (ctx->target.allocated_size == 0) {
+        return SND_ERR(SND_STATUS_CORRUPTED_STAGE);
+    }
+
+    for (DWORD i = 0; i < ctx->coff.sections_count; i++) {
+        PSND_IMAGE_SECTION_HEADER sec          = &ctx->coff.section_head[i];
+        LPVOID                    section_dest = ctx->target.section_map[i + 1];
+
+        if (!section_dest) {
+            continue;
+        }
+
+        SIZE_T sec_size = SND_MAX((SIZE_T)sec->SizeOfRawData, (SIZE_T)sec->Misc.VirtualSize);
+        if (sec_size == 0) {
+            continue;
+        }
+
+        if (SND_ADD_OVERFLOWS_SIZET(sec_size, SND_PAGE_SIZE - 1)) {
+            return SND_ERR(SND_STATUS_COFF_LOADER_VIRTUAL_SIZE_OVERFLOW);
+        }
+
+        SIZE_T offset       = SND_PTR_DIFF(section_dest, ctx->target.local_base);
+        SIZE_T aligned_size = SND_ALIGN_UP(sec_size, SND_PAGE_SIZE);
+        DWORD  protect      = snd_image_characteristics_to_protect(sec->Characteristics);
+
+        SND_TRY(cb(offset, aligned_size, protect, user_ctx));
+    }
+
+    SIZE_T metadata_offset = SND_PTR_DIFF(ctx->target.section_map, ctx->target.local_base);
+    if (ctx->target.trampolines_base) {
+        SIZE_T rw_size = SND_PTR_DIFF(ctx->target.trampolines_base, ctx->target.section_map);
+        if (rw_size > 0) {
+            SND_TRY(cb(metadata_offset, rw_size, SND_PAGE_READWRITE, user_ctx));
+        }
+
+        SIZE_T tramp_offset = SND_PTR_DIFF(ctx->target.trampolines_base, ctx->target.local_base);
+        SIZE_T rx_size      = ctx->target.allocated_size - tramp_offset;
+        if (rx_size > 0) {
+            SND_TRY(cb(tramp_offset, rx_size, SND_PAGE_EXECUTE_READ, user_ctx));
+        }
+    } else {
+        SIZE_T rw_size = ctx->target.allocated_size - metadata_offset;
+        if (rw_size > 0) {
+            SND_TRY(cb(metadata_offset, rw_size, SND_PAGE_READWRITE, user_ctx));
+        }
+    }
+
+    return SND_OK;
+}
+
 snd_status_t snd_ldr_coff_apply_memory_protections(snd_ldr_coff_ctx_t *ctx) {
     SND_CHECK_NULL(ctx, ctx->mem_api, ctx->mem_api->protect);
 
@@ -372,63 +484,8 @@ snd_status_t snd_ldr_coff_apply_memory_protections(snd_ldr_coff_ctx_t *ctx) {
                            snd_ldr_coff_stage_to_string(ctx->stage));
     }
 
-    for (DWORD i = 0; i < ctx->coff.sections_count; i++) {
-        PSND_IMAGE_SECTION_HEADER sec          = &ctx->coff.section_head[i];
-        LPVOID                    section_dest = ctx->target.section_map[i + 1];
-
-        if (!section_dest)
-            continue;
-
-        DWORD protect = SND_PAGE_READONLY;
-
-        if ((sec->Characteristics & SND_IMAGE_SCN_MEM_EXECUTE) && (sec->Characteristics & SND_IMAGE_SCN_MEM_WRITE)) {
-            protect = SND_PAGE_EXECUTE_READWRITE;
-        } else if (sec->Characteristics & SND_IMAGE_SCN_MEM_EXECUTE) {
-            protect = SND_PAGE_EXECUTE_READ;
-        } else if (sec->Characteristics & SND_IMAGE_SCN_MEM_WRITE) {
-            protect = SND_PAGE_READWRITE;
-        }
-
-        SIZE_T sec_size = sec->SizeOfRawData;
-        if (sec->Misc.VirtualSize > sec_size) {
-            sec_size = sec->Misc.VirtualSize;
-        }
-
-        if (sec_size == 0) {
-            continue;
-        }
-
-        SIZE_T aligned_size = SND_ALIGN_UP(sec_size, SND_PAGE_SIZE);
-        DWORD  old_protect  = 0;
-
-        SND_TRY(ctx->mem_api->protect(section_dest, aligned_size, protect, &old_protect));
-    }
-
-    if (ctx->target.section_map) {
-        DWORD old_protect = 0;
-
-        if (ctx->target.trampolines_base) {
-            SIZE_T rw_size = SND_PTR_DELTA(ctx->target.trampolines_base, ctx->target.section_map);
-            if (rw_size > 0) {
-                SND_TRY(ctx->mem_api->protect(ctx->target.section_map, rw_size, SND_PAGE_READWRITE, &old_protect));
-            }
-
-            SIZE_T rx_size =
-                ctx->target.allocated_size - (SND_PTR_DELTA(ctx->target.trampolines_base, ctx->target.local_base));
-            if (rx_size > 0) {
-                SND_TRY(
-                    ctx->mem_api->protect(ctx->target.trampolines_base, rx_size, SND_PAGE_EXECUTE_READ, &old_protect));
-            }
-        } else {
-            SIZE_T metadata_size =
-                ctx->target.allocated_size - (SND_PTR_DELTA(ctx->target.section_map, ctx->target.local_base));
-            SIZE_T aligned_metadata_size = SND_ALIGN_UP(metadata_size, SND_PAGE_SIZE);
-            if (aligned_metadata_size > 0) {
-                SND_TRY(ctx->mem_api->protect(ctx->target.section_map, aligned_metadata_size, SND_PAGE_READWRITE,
-                                              &old_protect));
-            }
-        }
-    }
+    snd_coff_local_protect_ctx_t pctx = {.mem_api = ctx->mem_api, .local_base = ctx->target.local_base};
+    SND_TRY(snd_ldr_coff_for_each_protection_region(ctx, coff_local_protect_cb, &pctx));
 
     ctx->stage = SND_COFF_STAGE_READY_FOR_EXECUTION;
     return SND_OK;

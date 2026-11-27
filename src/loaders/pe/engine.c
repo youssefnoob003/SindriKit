@@ -283,6 +283,48 @@ snd_status_t snd_ldr_pe_resolve_imports(snd_ldr_pe_ctx_t *ctx) {
     return SND_OK;
 }
 
+typedef struct {
+    const snd_memory_api_t *mem_api;
+    LPVOID                  local_base;
+} snd_pe_local_protect_ctx_t;
+
+static snd_status_t pe_local_protect_cb(SIZE_T offset, SIZE_T size, DWORD protect, void *user_ctx) {
+    const snd_pe_local_protect_ctx_t *pctx        = (const snd_pe_local_protect_ctx_t *)user_ctx;
+    DWORD                             old_protect = 0;
+    return pctx->mem_api->protect(SND_PTR_ADD(pctx->local_base, offset), size, protect, &old_protect);
+}
+
+snd_status_t snd_ldr_pe_for_each_protection_region(const snd_pe_parser_t *pe, SIZE_T virtual_size,
+                                                   snd_memory_protect_region_cb cb, void *user_ctx) {
+    SND_CHECK_NULL(pe, cb);
+
+    if (virtual_size == 0) {
+        return SND_ERR(SND_STATUS_IMAGE_SIZE_NULL);
+    }
+
+    SIZE_T total_pages = virtual_size / SND_PAGE_SIZE + ((virtual_size % SND_PAGE_SIZE) ? 1 : 0);
+    if (total_pages > 0) {
+        SIZE_T run_start_page = 0;
+        DWORD  run_protect    = snd_pe_get_page_protection_flags(pe, 0);
+
+        for (SIZE_T p = 1; p <= total_pages; p++) {
+            DWORD current_protect = (p < total_pages) ? snd_pe_get_page_protection_flags(pe, p * SND_PAGE_SIZE) : 0;
+
+            if (p == total_pages || current_protect != run_protect) {
+                SIZE_T run_offset = run_start_page * SND_PAGE_SIZE;
+                SIZE_T run_length = SND_MIN((p - run_start_page) * SND_PAGE_SIZE, virtual_size - run_offset);
+
+                SND_TRY(cb(run_offset, run_length, run_protect, user_ctx));
+
+                run_start_page = p;
+                run_protect    = current_protect;
+            }
+        }
+    }
+
+    return SND_OK;
+}
+
 snd_status_t snd_ldr_pe_apply_memory_protections(snd_ldr_pe_ctx_t *ctx) {
     SND_CHECK_NULL(ctx, ctx->mem_api, ctx->mem_api->protect);
 
@@ -292,36 +334,14 @@ snd_status_t snd_ldr_pe_apply_memory_protections(snd_ldr_pe_ctx_t *ctx) {
                            snd_ldr_pe_stage_to_string(ctx->stage));
     }
 
-    if (!ctx->target.local_base) {
-        return SND_ERR_CTX(SND_STATUS_CORRUPTED_STAGE, "State mismatch: Stage is %s but local_base is NULL.",
+    if (!ctx->target.local_base || ctx->target.allocated_size == 0) {
+        return SND_ERR_CTX(SND_STATUS_CORRUPTED_STAGE,
+                           "State mismatch: Stage is %s but local_base or allocated_size is invalid.",
                            snd_ldr_pe_stage_to_string(SND_STAGE_IMPORTS_RESOLVED));
     }
 
-    const snd_pe_parser_t *pe           = &ctx->pe;
-    SIZE_T                 virtual_size = ctx->target.allocated_size;
-
-    SIZE_T total_pages = virtual_size / SND_PAGE_SIZE + ((virtual_size % SND_PAGE_SIZE) ? 1 : 0);
-    if (total_pages > 0) {
-        SIZE_T run_start_page = 0;
-        DWORD  run_protect    = snd_pe_get_page_protection_flags(pe, 0);
-        DWORD  old_protect    = 0;
-
-        for (SIZE_T p = 1; p <= total_pages; p++) {
-            SIZE_T page_offset     = (p == total_pages) ? virtual_size : p * SND_PAGE_SIZE;
-            DWORD  current_protect = (p < total_pages) ? snd_pe_get_page_protection_flags(pe, page_offset) : 0;
-
-            if (p == total_pages || current_protect != run_protect) {
-                SIZE_T run_offset = run_start_page * SND_PAGE_SIZE;
-                SIZE_T run_length = (p - run_start_page) * SND_PAGE_SIZE;
-
-                void *run_addr = SND_PTR_ADD(ctx->target.local_base, run_offset);
-                SND_TRY(ctx->mem_api->protect(run_addr, run_length, run_protect, &old_protect));
-
-                run_start_page = p;
-                run_protect    = current_protect;
-            }
-        }
-    }
+    snd_pe_local_protect_ctx_t pctx = {.mem_api = ctx->mem_api, .local_base = ctx->target.local_base};
+    SND_TRY(snd_ldr_pe_for_each_protection_region(&ctx->pe, ctx->target.allocated_size, pe_local_protect_cb, &pctx));
 
     ctx->target.entry_point = snd_pe_get_entry_point(&ctx->pe);
     ctx->stage              = SND_STAGE_READY_FOR_EXECUTION;
