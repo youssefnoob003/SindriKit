@@ -18,7 +18,7 @@ For operational security (OpSec) reasons, **no pre-compiled binaries are provide
 I consider the following to be legitimate security vulnerabilities within the scope of SindriKit:
 
 - **OpSec Regressions (SILENT Tier):** 
-   If the framework is compiled in the production `SILENT` tier (`SND_ENABLE_DEBUG=OFF`), and it unintentionally leaks framework strings, debug artifacts, plaintext API names, or internal error contexts into the final compiled binary (`.rdata` or `.data`), this is a critical OpSec vulnerability. Operators rely on the `SILENT` tier to produce zero-footprint payloads.
+   If the framework is compiled in the production `SILENT` tier (`SND_ENABLE_DEBUG=OFF`), and it unintentionally leaks framework strings, debug artifacts, plaintext API names, or internal error contexts into the final compiled binary (`.rdata` or `.data`), this is a critical OpSec vulnerability. Operators rely on the `SILENT` tier to produce stripped, zero-debug-string binaries.
    
 - **Memory Corruption & Stability:**
    Buffer overflows, out-of-bounds reads/writes in the custom PE or COFF parsers, or unhandled null pointer dereferences that lead to the crashing of an implant or host process. Implants must be rock-solid; arbitrary crashes generate highly visible process crash dumps and defensive telemetry that instantly burn an operation.

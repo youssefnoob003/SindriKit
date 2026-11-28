@@ -71,7 +71,7 @@ The injection engine progresses through discrete stages (`SND_INJ_STAGE_*`), cal
 7. `terminate_process` — abort a target created by APC/hijack cleanup when needed
 8. `close_handle` — release process and thread handles via `snd_inj_cleanup`
 
-A typical full-stealth profile (`unified inject classic ... --sys`):
+A typical syscall-backed profile (`unified inject classic ... --sys`):
 
 1. Map clean `ntdll.dll` from KnownDlls (`snd_om_knowndll_map` + `snd_map_nt`)
 2. Bootstrap syscalls with the mapped base

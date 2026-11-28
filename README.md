@@ -30,7 +30,7 @@ By shifting execution mechanics to runtime function pointers, you can swap your 
 * **Technique Coverage:** Reflective **PE** (EXE/DLL) and **COFF/BOF** loading, **classic** and **early-bird APC** injection over shellcode/PE/COFF, plus architecture-aware FFI and Heaven's Gate — all over the same composable profiles.
 * **Cascading Syscall Pipeline:** Pluggable SSN resolvers (`snd_syscall_resolve_ssn_scan`, `snd_syscall_resolve_ssn_sort`) with a priority chain, decoupled from invokers: **direct**, **indirect** (NTDLL gadget), or **spoofed** (dynamic Fat-Frame call-stack spoofing).
 * **Facility-Encoded Status:** Every fallible call returns `snd_status_t` — a packed facility/local code plus the captured OS error, with context strings that compile out in the silent tier.
-* **Compile-Time Obfuscation:** String and API hashing algorithms (DJB2, FNV1A) can be swapped globally via CMake. Compiling automatically randomizes the global seed to alter static signatures.
+* **Compile-Time Obfuscation:** String and API hashing algorithms (DJB2, FNV1A) can be swapped globally via CMake. Enabling `SND_RANDOMIZE_SEED=ON` randomizes the global seed to alter static hash constants.
 * **Mutation Engine:** Enables deep polymorphism via `SND_MORPH`. Generates unique binary signatures on every build by injecting volatile opaque predicates into C code, functionally equivalent math/NOPs into Assembly stubs, and scrambling the memory layout of core structs.
 * **Release Builds:** A silent tier strips all diagnostic strings, file descriptors, and tracking frames; `SND_CRTLESS` builds go further with `/NODEFAULTLIB`, no SDK header, a PEB frontend, and native backends only.
 
@@ -242,6 +242,17 @@ Full reference under [`docs/`](docs/README.md):
 - **[Tests](docs/tests/README.md)** — integration runners and the PE mutator
 
 *Planned: an **Evasion** domain.*
+
+---
+
+## Scope & Threat Model
+
+SindriKit is a **modular C systems foundation and execution architecture**—not a turnkey EDR bypass tool.
+
+* **What SindriKit Provides:** Bounds-checked PE/COFF parsers, state-tracked reflective loaders, reference injection workflows, build-time string/API hashing, and swappable user-mode execution primitives (`Win32`, native `ntdll`, and direct/indirect syscall stubs) designed to keep technique logic independent of OS mechanics.
+* **What It Addresses:** Reducing static signature surface (via `SND_ENABLE_DEBUG=OFF`, `SND_CRTLESS=ON`, API hashing, and optional `SND_MORPH`) and avoiding user-mode `kernel32.dll` / `ntdll.dll` inline hooks where `_nt` or `_sys` backends are used.
+* **What It Does Not Guarantee:** Out-of-the-box evasion against modern EDRs. Kernel callbacks (`PsSetCreateProcessNotifyRoutine`, `PsSetCreateThreadNotifyRoutine`, `ObRegisterCallbacks`), ETW-Ti, full kernel call-stack validation, memory scanners, and behavioral heuristics operate below or outside user-mode API tables.
+* **Reference PoCs:** `unified.exe` and the built-in injection/syscall profiles are reference compositions for testing and integration, not hardened operational payloads.
 
 ---
 
